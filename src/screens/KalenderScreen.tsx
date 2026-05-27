@@ -1,8 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
 import { useUser, type EntryType } from '../context/UserContext'
 import { subjects } from '../data/mockData'
 
@@ -46,7 +43,6 @@ function getGreeting(name: string) {
 }
 
 export function KalenderScreen() {
-  const navigate = useNavigate()
   const { profile, personalEntries, addEntry, removeEntry } = useUser()
   const weekDays = getWeekDays()
   const today = new Date()
@@ -61,13 +57,14 @@ export function KalenderScreen() {
     time: '',
   })
 
-  const upcomingExams = subjects
-    .filter((s) => s.nextExam !== null)
-    .map((s) => ({ ...s, days: daysUntil(s.nextExam!) }))
-    .filter((s) => s.days >= 0)
+  const upcomingExams = (profile?.klausurtermine ?? [])
+    .map(({ subjectId, date }) => {
+      const subject = subjects.find((s) => s.id === subjectId)
+      return { subjectId, date, days: daysUntil(date), subject }
+    })
+    .filter((e) => e.days >= 0 && e.subject)
     .sort((a, b) => a.days - b.days)
 
-  const todaySubjects = subjects.slice(0, 3)
   const todayEntries = personalEntries.filter((e) => e.date === todayStr)
   const futureEntries = personalEntries
     .filter((e) => e.date > todayStr)
@@ -104,7 +101,7 @@ export function KalenderScreen() {
                 <path d="M12 5v14M5 12h14" strokeLinecap="round" />
               </svg>
             </button>
-            <Badge color="warning" className="text-sm px-3 py-1.5">🔥 12 Tage</Badge>
+            <span className="text-sm px-3 py-1.5 rounded-btn bg-warning/10 text-warning font-medium">🔥 12 Tage</span>
           </div>
         </div>
       </div>
@@ -156,31 +153,6 @@ export function KalenderScreen() {
             </button>
           </div>
           <div className="space-y-2">
-            {/* School schedule */}
-            {todaySubjects.map((subject, i) => {
-              const times = ['8:00 – 9:30', '10:00 – 11:30', '13:00 – 14:30']
-              return (
-                <Card
-                  key={subject.id}
-                  hoverable
-                  onClick={() => navigate(`/unterricht/${subject.id}`)}
-                  className="flex items-center gap-4"
-                >
-                  <div
-                    className="w-10 h-10 rounded-btn flex items-center justify-center text-lg shrink-0"
-                    style={{ backgroundColor: `${subject.color}22` }}
-                  >
-                    {subject.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-text-primary font-medium">{subject.name}</p>
-                    <p className="text-text-muted text-xs mt-0.5">{times[i]} Uhr</p>
-                  </div>
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: subject.color }} />
-                </Card>
-              )
-            })}
-
             {/* Personal entries for today */}
             {todayEntries.map((entry) => {
               const cfg = TYPE_CONFIG[entry.type]
@@ -284,36 +256,38 @@ export function KalenderScreen() {
         )}
 
         {/* Klausur-Countdown */}
-        <section>
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Nächste Klausuren</h2>
-          <div className="space-y-2">
-            {upcomingExams.slice(0, 3).map((subject) => (
-              <div
-                key={subject.id}
-                className="bg-surface border border-border rounded-card p-4 flex items-center gap-4"
-              >
+        {upcomingExams.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Nächste Klausuren</h2>
+            <div className="space-y-2">
+              {upcomingExams.slice(0, 3).map((exam) => (
                 <div
-                  className="w-10 h-10 rounded-btn flex items-center justify-center text-lg shrink-0"
-                  style={{ backgroundColor: `${subject.color}22` }}
+                  key={exam.subjectId + exam.date}
+                  className="bg-surface border border-border rounded-card p-4 flex items-center gap-4"
                 >
-                  {subject.icon}
+                  <div
+                    className="w-10 h-10 rounded-btn flex items-center justify-center text-lg shrink-0"
+                    style={{ backgroundColor: `${exam.subject!.color}22` }}
+                  >
+                    {exam.subject!.icon}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-text-primary font-medium text-sm">{exam.subject!.name}</p>
+                    <p className="text-text-muted text-xs mt-0.5">
+                      {new Date(exam.date).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' })}
+                    </p>
+                  </div>
+                  <div
+                    className="px-3 py-1.5 rounded-btn text-xs font-bold shrink-0"
+                    style={{ backgroundColor: `${exam.subject!.color}22`, color: exam.subject!.color }}
+                  >
+                    {exam.days === 0 ? 'Heute' : exam.days === 1 ? 'Morgen' : `${exam.days} Tage`}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-text-primary font-medium text-sm">{subject.name}</p>
-                  <p className="text-text-muted text-xs mt-0.5">
-                    {new Date(subject.nextExam!).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' })}
-                  </p>
-                </div>
-                <div
-                  className="px-3 py-1.5 rounded-btn text-xs font-bold shrink-0"
-                  style={{ backgroundColor: `${subject.color}22`, color: subject.color }}
-                >
-                  {subject.days === 0 ? 'Heute' : subject.days === 1 ? 'Morgen' : `${subject.days} Tage`}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* KI-Lernvorschlag — Pro teaser */}
         <section>

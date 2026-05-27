@@ -10,6 +10,8 @@ import { KlausurphasenScreen } from '../screens/KlausurphasenScreen'
 import { LearnModeScreen } from '../screens/LearnModeScreen'
 import { ExamModeScreen } from '../screens/ExamModeScreen'
 import { ExamResultScreen } from '../screens/ExamResultScreen'
+import { NoteCreateScreen } from '../screens/NoteCreateScreen'
+import { FolderScreen } from '../screens/FolderScreen'
 import { ProfilScreen } from '../screens/ProfilScreen'
 
 function Layout() {
@@ -27,7 +29,11 @@ function Layout() {
       <Routes>
         <Route path="/" element={<KalenderScreen />} />
         <Route path="/unterricht" element={<UnterrichtScreen />} />
+        <Route path="/unterricht/neue-notiz" element={<NoteCreateScreen />} />
         <Route path="/unterricht/:id" element={<LessonScreen />} />
+        <Route path="/unterricht/:id/neue-notiz" element={<NoteCreateScreen />} />
+        <Route path="/unterricht/:id/ordner/:folderId" element={<FolderScreen />} />
+        <Route path="/unterricht/:id/ordner/:folderId/neue-notiz" element={<NoteCreateScreen />} />
         <Route path="/unterricht/:id/:lessonId" element={<SmartNotesScreen />} />
         <Route path="/klausurmodus" element={<KlausurphasenScreen />} />
         <Route path="/klausurmodus/lernen" element={<LearnModeScreen />} />

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '../components/ui/Button'
-import { useUser } from '../context/UserContext'
+import { useUser, generateKcFolders } from '../context/UserContext'
 import { type UserProfile } from '../context/UserContext'
 
 const BUNDESLAENDER = [
@@ -22,25 +22,50 @@ const BUNDESLAENDER = [
   { id: 'th', name: 'Thüringen' },
 ]
 
-const SUBJECTS = [
-  { id: 'deutsch',      name: 'Deutsch',        icon: '📖', color: '#4ADE80' },
-  { id: 'mathematik',   name: 'Mathematik',     icon: '📐', color: '#7C6FFF' },
-  { id: 'englisch',     name: 'Englisch',       icon: '🌍', color: '#38BDF8' },
-  { id: 'geschichte',   name: 'Geschichte',     icon: '🏛️', color: '#F87171' },
-  { id: 'biologie',     name: 'Biologie',       icon: '🧬', color: '#FACC15' },
-  { id: 'physik',       name: 'Physik',         icon: '⚛️', color: '#818CF8' },
-  { id: 'chemie',       name: 'Chemie',         icon: '🧪', color: '#34D399' },
-  { id: 'informatik',   name: 'Informatik',     icon: '💻', color: '#60A5FA' },
-  { id: 'geographie',   name: 'Geographie',     icon: '🗺️', color: '#A78BFA' },
-  { id: 'wirtschaft',   name: 'Wirtschaft',     icon: '📊', color: '#FB923C' },
-  { id: 'latein',       name: 'Latein',         icon: '🏺', color: '#C084FC' },
-  { id: 'franzoesisch', name: 'Französisch',    icon: '🗼', color: '#2DD4BF' },
+const SUBJECTS: Record<string, { name: string; icon: string; color: string }> = {
+  deutsch:      { name: 'Deutsch',          icon: '📖', color: '#4ADE80' },
+  mathematik:   { name: 'Mathematik',       icon: '📐', color: '#7C6FFF' },
+  englisch:     { name: 'Englisch',         icon: '🌍', color: '#38BDF8' },
+  franzoesisch: { name: 'Französisch',      icon: '🗼', color: '#2DD4BF' },
+  latein:       { name: 'Latein',           icon: '🏺', color: '#C084FC' },
+  spanisch:     { name: 'Spanisch',         icon: '🌶️', color: '#059669' },
+  biologie:     { name: 'Biologie',         icon: '🧬', color: '#FACC15' },
+  chemie:       { name: 'Chemie',           icon: '🧪', color: '#34D399' },
+  physik:       { name: 'Physik',           icon: '⚛️', color: '#818CF8' },
+  geschichte:   { name: 'Geschichte',       icon: '🏛️', color: '#F87171' },
+  politik:      { name: 'Politik / Soz.',   icon: '⚖️', color: '#6366F1' },
+  geographie:   { name: 'Geographie',       icon: '🗺️', color: '#A78BFA' },
+  kunst:        { name: 'Kunst',            icon: '🎨', color: '#E879F9' },
+  musik:        { name: 'Musik',            icon: '🎵', color: '#EC4899' },
+  sport:        { name: 'Sport',            icon: '🏃', color: '#F472B6' },
+  religion:     { name: 'Religion / Ethik', icon: '🙏', color: '#D97706' },
+  informatik:   { name: 'Informatik',       icon: '💻', color: '#60A5FA' },
+  wirtschaft:   { name: 'Wirtschaft',       icon: '📊', color: '#FB923C' },
+}
+
+const SUBJECT_GROUPS = [
+  { label: 'Kernfächer',            ids: ['deutsch', 'mathematik', 'englisch'] },
+  { label: 'Sprachen',              ids: ['franzoesisch', 'latein', 'spanisch'] },
+  { label: 'Naturwissenschaften',   ids: ['biologie', 'chemie', 'physik'] },
+  { label: 'Gesellschaftswiss.',    ids: ['geschichte', 'politik', 'geographie'] },
+  { label: 'Kunst & Sport',         ids: ['kunst', 'musik', 'sport', 'religion'] },
+  { label: 'Weiteres',              ids: ['informatik', 'wirtschaft'] },
 ]
 
 const KLASSEN = ['10', '11', '12', '13']
 const SCHULFORMEN = ['Gymnasium', 'FOS', 'Gesamtschule']
 
 type Step = 1 | 2 | 3 | 4 | 5
+
+const DEV_PROFILE: UserProfile = {
+  name: 'Simon Happ',
+  klasse: '13',
+  schulform: 'Gymnasium',
+  bundesland: 'Niedersachsen',
+  bundeslandId: 'ni',
+  faecher: ['englisch', 'mathematik', 'biologie', 'physik', 'religion'],
+  klausurtermine: [{ subjectId: 'mathematik', date: '2026-06-06' }],
+}
 
 export function OnboardingScreen() {
   const { completeOnboarding } = useUser()
@@ -50,6 +75,7 @@ export function OnboardingScreen() {
   const [name, setName] = useState('')
   const [klasse, setKlasse] = useState('')
   const [schulform, setSchulform] = useState('')
+  const [zielnote, setZielnote] = useState('')
   const [bundeslandId, setBundeslandId] = useState('')
   const [faecher, setFaecher] = useState<string[]>([])
   const [klausurSubject, setKlausurSubject] = useState('')
@@ -93,6 +119,7 @@ export function OnboardingScreen() {
         klausurSubject && klausurDate
           ? [{ subjectId: klausurSubject, date: klausurDate }]
           : [],
+      zielnote: zielnote || undefined,
     }
     setTimeout(() => completeOnboarding(profile), 800)
   }
@@ -137,12 +164,13 @@ export function OnboardingScreen() {
 
       {/* Step content */}
       <div className="flex-1 px-6 pt-20 pb-10">
-        {step === 1 && <StepWelcome onNext={next} />}
+        {step === 1 && <StepWelcome onNext={next} onSkip={() => completeOnboarding(DEV_PROFILE, generateKcFolders(DEV_PROFILE))} />}
         {step === 2 && (
           <StepPersonal
             name={name} setName={setName}
             klasse={klasse} setKlasse={setKlasse}
             schulform={schulform} setSchulform={setSchulform}
+            zielnote={zielnote} setZielnote={setZielnote}
           />
         )}
         {step === 3 && (
@@ -190,7 +218,7 @@ export function OnboardingScreen() {
 
 /* ─── Step 1: Welcome ─────────────────────────────────────── */
 
-function StepWelcome({ onNext }: { onNext: () => void }) {
+function StepWelcome({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
   return (
     <div className="flex flex-col justify-between min-h-[calc(100vh-80px)]">
       <div className="flex-1 flex flex-col justify-center">
@@ -219,23 +247,35 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
         </div>
       </div>
 
-      <Button variant="primary" fullWidth size="lg" onClick={onNext}>
-        Los geht's
-      </Button>
+      <div className="space-y-3">
+        <Button variant="primary" fullWidth size="lg" onClick={onNext}>
+          Los geht's
+        </Button>
+        <button
+          onClick={onSkip}
+          className="w-full py-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
+        >
+          Dev: Mit Demo-Profil überspringen
+        </button>
+      </div>
     </div>
   )
 }
 
 /* ─── Step 2: Personal info ───────────────────────────────── */
 
+const ZIELNOTEN = ['1,0', '1,5', '2,0', '2,5', '3,0+']
+
 function StepPersonal({
   name, setName,
   klasse, setKlasse,
   schulform, setSchulform,
+  zielnote, setZielnote,
 }: {
   name: string; setName: (v: string) => void
   klasse: string; setKlasse: (v: string) => void
   schulform: string; setSchulform: (v: string) => void
+  zielnote: string; setZielnote: (v: string) => void
 }) {
   return (
     <div>
@@ -269,7 +309,7 @@ function StepPersonal({
       </div>
 
       <p className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Schulform</p>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 mb-8">
         {SCHULFORMEN.map((sf) => (
           <button
             key={sf}
@@ -281,6 +321,24 @@ function StepPersonal({
             }`}
           >
             {sf}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">Abi-Zielnote</p>
+      <p className="text-xs text-text-muted mb-3">Optional — hilft der KI, deine Lernintensität anzupassen.</p>
+      <div className="grid grid-cols-5 gap-2">
+        {ZIELNOTEN.map((z) => (
+          <button
+            key={z}
+            onClick={() => setZielnote(zielnote === z ? '' : z)}
+            className={`py-2.5 rounded-card text-sm font-bold border transition-all duration-150 ${
+              zielnote === z
+                ? 'bg-accent border-accent text-white'
+                : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            {z}
           </button>
         ))}
       </div>
@@ -330,40 +388,50 @@ function StepFaecher({ selected, onToggle }: { selected: string[]; onToggle: (id
   return (
     <div>
       <h2 className="text-2xl font-bold text-text-primary mb-1">Deine Fächer</h2>
-      <p className="text-text-muted text-sm mb-6">
-        Wähle alle Fächer, die du lernst. ({selected.length} ausgewählt)
+      <p className="text-text-muted text-sm mb-5">
+        Wähle alle Fächer, die du lernst. <span className="text-accent font-medium">{selected.length} ausgewählt</span>
       </p>
 
-      <div className="grid grid-cols-2 gap-3">
-        {SUBJECTS.map((subject) => {
-          const active = selected.includes(subject.id)
-          return (
-            <button
-              key={subject.id}
-              onClick={() => onToggle(subject.id)}
-              className={`relative p-4 rounded-card border text-left transition-all duration-150 ${
-                active ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:bg-surface-hover'
-              }`}
-            >
-              <div
-                className="w-9 h-9 rounded-btn flex items-center justify-center text-xl mb-2"
-                style={{ backgroundColor: `${subject.color}22` }}
-              >
-                {subject.icon}
-              </div>
-              <p className={`text-sm font-semibold ${active ? 'text-text-primary' : 'text-text-secondary'}`}>
-                {subject.name}
-              </p>
-              {active && (
-                <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-              )}
-            </button>
-          )
-        })}
+      <div className="space-y-5">
+        {SUBJECT_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+              {group.label}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {group.ids.map((id) => {
+                const subject = SUBJECTS[id]
+                const active = selected.includes(id)
+                return (
+                  <button
+                    key={id}
+                    onClick={() => onToggle(id)}
+                    className={`relative flex items-center gap-3 p-3 rounded-card border text-left transition-all duration-150 ${
+                      active ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:bg-surface-hover'
+                    }`}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-btn flex items-center justify-center text-lg shrink-0"
+                      style={{ backgroundColor: `${subject.color}22` }}
+                    >
+                      {subject.icon}
+                    </div>
+                    <p className={`text-xs font-semibold leading-tight ${active ? 'text-text-primary' : 'text-text-secondary'}`}>
+                      {subject.name}
+                    </p>
+                    {active && (
+                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-accent flex items-center justify-center shrink-0">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -380,7 +448,7 @@ function StepKlausur({
   subject: string; setSubject: (v: string) => void
   date: string; setDate: (v: string) => void
 }) {
-  const available = SUBJECTS.filter((s) => faecher.includes(s.id))
+  const available = faecher.map((id) => ({ id, ...SUBJECTS[id] })).filter((s) => s.name)
 
   return (
     <div>

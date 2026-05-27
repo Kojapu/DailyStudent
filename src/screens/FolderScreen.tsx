@@ -1,26 +1,27 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { Badge } from '../components/ui/Badge'
 import { Header } from '../components/ui/Header'
+import { Badge } from '../components/ui/Badge'
 import { useUser } from '../context/UserContext'
 import { subjects } from '../data/mockData'
 
-export function LessonScreen() {
-  const { id } = useParams<{ id: string }>()
+export function FolderScreen() {
+  const { id, folderId } = useParams<{ id: string; folderId: string }>()
   const navigate = useNavigate()
-  const { userNotes } = useUser()
+  const { userFolders, userNotes } = useUser()
 
   const subject = subjects.find((s) => s.id === id)
-  const subjectUserNotes = userNotes.filter((n) => n.subjectId === id)
+  const folder = userFolders.find((f) => f.id === folderId)
+  const folderNotes = userNotes.filter((n) => n.folderId === folderId)
 
-  if (!subject) return <div className="p-4 text-text-secondary">Fach nicht gefunden.</div>
-
-  const totalCount = subjectUserNotes.length
+  if (!subject || !folder) {
+    return <div className="p-4 text-text-secondary">Ordner nicht gefunden.</div>
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-24">
       <Header
-        title={subject.name}
-        subtitle={`${totalCount} Einträge`}
+        title={folder.name}
+        subtitle={subject.name}
         showBack
         right={
           <div
@@ -33,8 +34,7 @@ export function LessonScreen() {
       />
 
       <div className="px-4 space-y-2 mt-2">
-        {/* User-created notes */}
-        {subjectUserNotes.map((note) => (
+        {folderNotes.map((note) => (
           <button
             key={note.id}
             onClick={() => navigate(`/unterricht/${id}/${note.id}`)}
@@ -64,9 +64,9 @@ export function LessonScreen() {
           </button>
         ))}
 
-        {totalCount === 0 && (
+        {folderNotes.length === 0 && (
           <div className="text-center py-12 text-text-muted text-sm">
-            Noch keine Notizen für {subject.name}.<br />
+            Noch keine Notizen in diesem Ordner.<br />
             Tippe auf „+" um die erste zu erstellen.
           </div>
         )}
@@ -74,7 +74,7 @@ export function LessonScreen() {
 
       {/* FAB */}
       <button
-        onClick={() => navigate(`/unterricht/${id}/neue-notiz`)}
+        onClick={() => navigate(`/unterricht/${id}/ordner/${folderId}/neue-notiz`)}
         className="fixed bottom-24 right-4 bg-accent text-white rounded-pill px-5 py-3 font-semibold text-sm shadow-lg shadow-accent/30 hover:opacity-90 active:scale-95 transition-all flex items-center gap-2"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
