@@ -1,0 +1,68 @@
+export interface Subject {
+  id: string
+  name: string
+  color: string
+  lessonCount: number
+  nextExam: string | null
+  icon: string
+}
+
+export interface Lesson {
+  id: string
+  subjectId: string
+  topicId?: string
+  date: string
+  topic: string
+  duration: number
+  hasNotes: boolean
+}
+
+export interface HalfYear {
+  id: string
+  name: string
+  period: string
+  isCurrent: boolean
+}
+
+export interface Topic {
+  id: string
+  subjectId: string
+  halfYearId: string
+  name: string
+  kcAligned: boolean
+  lessonIds: string[]
+}
+
+export interface SmartNote {
+  id: string
+  lessonId: string
+  summary: string
+  keywords: string[]
+  examTopics: string[]
+}
+
+export interface FlashCard {
+  id: string
+  subjectId: string
+  front: string
+  back: string
+}
+
+export interface ExamQuestion {
+  id: string
+  subjectId: string
+  text: string
+  points: number
+  operator: string
+}
+
+export interface ExamResult {
+  questionId: string
+  userAnswer: string
+  score: number
+  maxScore: number
+  grade: string
+  strengths: string[]
+  weaknesses: string[]
+  suggestion: string
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0F0F14"/>
+  <rect x="64" y="64" width="384" height="384" rx="80" fill="#7C6FFF" opacity="0.15"/>
+  <!-- Graduation cap -->
+  <path d="M256 140 L380 196 L256 252 L132 196 Z" fill="#7C6FFF"/>
+  <path d="M310 224 L310 300 Q256 330 202 300 L202 224 L256 252 Z" fill="#7C6FFF" opacity="0.85"/>
+  <!-- Tassel -->
+  <line x1="380" y1="196" x2="380" y2="248" stroke="#7C6FFF" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="380" cy="260" r="14" fill="#7C6FFF"/>
+  <!-- Star accent -->
+  <circle cx="340" cy="340" r="28" fill="#7C6FFF" opacity="0.3"/>
+  <path d="M340 316 L346 330 L362 332 L350 343 L353 359 L340 352 L327 359 L330 343 L318 332 L334 330 Z" fill="#7C6FFF"/>
+</svg>
