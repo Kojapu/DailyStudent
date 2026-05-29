@@ -281,7 +281,7 @@ export function SmartNotesScreen() {
                 disabled={!canReanalyze}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-btn text-xs font-semibold transition-all ${
                   canReanalyze
-                    ? 'bg-accent text-white hover:opacity-90'
+                    ? 'grad-accent text-white hover:opacity-90'
                     : 'bg-surface-hover text-text-muted cursor-not-allowed'
                 }`}
               >
@@ -482,7 +482,7 @@ export function SmartNotesScreen() {
                       onClick={() => void handleKeywordClick(kw)}
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-xs font-medium border transition-all active:scale-95 ${
                         isSelected
-                          ? 'bg-accent text-white border-transparent shadow-sm'
+                          ? 'grad-accent text-white border-transparent'
                           : 'bg-surface-hover border-border text-text-secondary hover:border-accent/50 hover:text-text-primary'
                       }`}
                     >

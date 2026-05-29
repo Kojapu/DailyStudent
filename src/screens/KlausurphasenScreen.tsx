@@ -12,13 +12,13 @@ const LERNPLAN_DAYS = [
 ]
 
 // ── Accent colour for "Blurting" (no built-in info token) ───────────────────
-const BLUE = { fg: '#007AFF', bg: 'rgba(0,122,255,0.10)' }
+const BLUE = { fg: '#007AFF', bg: 'linear-gradient(145deg, rgba(147,197,253,0.5), rgba(29,78,216,0.18))' }
 
 // ── Reusable icon wrappers ───────────────────────────────────────────────────
-function IconBubble({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function IconBubble({ children, style, className = '' }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) {
   return (
     <div
-      className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+      className={`w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0 ${className}`}
       style={style}
     >
       {children}
@@ -93,7 +93,7 @@ export function KlausurphasenScreen() {
             className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 press"
           >
             <div className="flex items-center gap-4">
-              <IconBubble style={{ backgroundColor: 'rgba(var(--color-accent), 0.10)' }}>
+              <IconBubble className="icon-accent">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="1.8" className="text-accent">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -109,7 +109,7 @@ export function KlausurphasenScreen() {
                   {DAYS_UNTIL} Tage bis zur Klausur — KI plant für dich
                 </p>
               </div>
-              <span className="px-3.5 py-1.5 rounded-pill bg-accent text-white text-[13px] font-semibold shrink-0">
+              <span className="px-3.5 py-1.5 rounded-pill grad-accent text-white text-[13px] font-semibold shrink-0">
                 Starten
               </span>
             </div>
@@ -128,7 +128,7 @@ export function KlausurphasenScreen() {
             >
               <div
                 className="w-11 h-11 rounded-[13px] flex items-center justify-center"
-                style={{ backgroundColor: 'rgba(var(--color-success), 0.12)' }}
+                className="icon-success"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="1.8" className="text-success">
@@ -181,7 +181,7 @@ export function KlausurphasenScreen() {
               onClick={() => console.log('probeklausur')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press"
             >
-              <IconBubble style={{ backgroundColor: 'rgba(var(--color-warning), 0.12)' }}>
+              <IconBubble className="icon-warning">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="1.8" className="text-warning">
                   <circle cx="12" cy="12" r="10" />
@@ -193,7 +193,7 @@ export function KlausurphasenScreen() {
                   <p className="text-text-primary font-bold text-[16px]">Probeklausur</p>
                   <span
                     className="px-2 py-0.5 rounded-pill text-[11px] font-semibold shrink-0"
-                    style={{ backgroundColor: 'rgba(var(--color-warning), 0.12)', color: 'rgb(var(--color-warning))' }}
+                    style={{ background: 'linear-gradient(145deg, rgba(253,224,71,0.5), rgba(180,83,9,0.18))', color: 'rgb(var(--color-warning))' }}
                   >
                     KI-Korrektur
                   </span>
@@ -208,7 +208,7 @@ export function KlausurphasenScreen() {
               onClick={() => console.log('lernzettel')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press"
             >
-              <IconBubble style={{ backgroundColor: 'rgba(var(--color-accent), 0.10)' }}>
+              <IconBubble className="icon-accent">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                   strokeWidth="1.8" className="text-accent">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
@@ -265,7 +265,7 @@ export function KlausurphasenScreen() {
               <div className="h-2 bg-border/40 rounded-pill overflow-hidden">
                 <div
                   className="h-full rounded-pill"
-                  style={{ width: '60%', background: 'linear-gradient(90deg, rgb(var(--color-accent)), rgba(var(--color-accent), 0.7))' }}
+                  style={{ width: '60%', background: 'linear-gradient(90deg, #A78BFA, #6D28D9)' }}
                 />
               </div>
               <p className="text-text-muted text-[11px] mt-1.5">Alle Details →</p>
@@ -299,7 +299,7 @@ export function KlausurphasenScreen() {
           </div>
           <button
             onClick={() => { setHasLernplan(true); setShowLernplanModal(false) }}
-            className="w-full py-3.5 rounded-card bg-accent text-white text-[15px] font-semibold press hover:opacity-90 transition-opacity"
+            className="w-full py-3.5 rounded-card grad-accent text-white text-[15px] font-semibold press hover:opacity-90 transition-opacity"
           >
             Lernplan generieren
           </button>

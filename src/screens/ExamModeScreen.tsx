@@ -37,7 +37,7 @@ export function ExamModeScreen() {
         <div className="flex items-center gap-3">
           <div className="flex-1 bg-border rounded-pill h-1.5 overflow-hidden">
             <div
-              className="h-full bg-accent rounded-pill transition-all duration-300"
+              className="h-full grad-accent rounded-pill transition-all duration-300"
               style={{ width: `${((currentIndex + 1) / total) * 100}%` }}
             />
           </div>

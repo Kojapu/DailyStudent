@@ -97,8 +97,8 @@ export function BottomNav() {
               <div
                 className="relative px-3 py-1.5 rounded-[12px] transition-all duration-300"
                 style={active ? {
-                  backgroundColor: 'rgba(var(--color-accent), 0.10)',
-                  boxShadow: '0 0 18px rgba(124,58,237,0.22), 0 0 6px rgba(124,58,237,0.12)',
+                  background: 'linear-gradient(145deg, rgba(196,181,253,0.45), rgba(109,40,217,0.2))',
+                  boxShadow: '0 0 20px rgba(124,58,237,0.28), 0 0 8px rgba(124,58,237,0.16)',
                 } : undefined}
               >
                 {item.icon(active)}

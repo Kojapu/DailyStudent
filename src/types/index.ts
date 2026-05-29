@@ -88,6 +88,20 @@ export interface UserNote {
   createdAt: string
 }
 
+export interface StundenplanSlot {
+  id: string
+  day: number // 0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr
+  startTime: string // "08:00"
+  endTime: string   // "08:45"
+  subjectId: string
+  room?: string
+}
+
+export interface Stundenplan {
+  slots: StundenplanSlot[]
+  createdAt: string
+}
+
 export interface GeneratedSmartNote {
   lessonId: string
   rawText: string

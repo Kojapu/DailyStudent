@@ -46,7 +46,7 @@ export function ProfilScreen() {
         <div className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4">
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center text-[28px] shrink-0"
-            style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.12) 0%, rgba(124,58,237,0.06) 100%)' }}
+            style={{ background: 'linear-gradient(145deg, rgba(196,181,253,0.5) 0%, rgba(109,40,217,0.18) 100%)' }}
           >
             🎓
           </div>
@@ -87,7 +87,7 @@ export function ProfilScreen() {
               </li>
             ))}
           </ul>
-          <button className="w-full py-3.5 rounded-card bg-accent text-white text-[15px] font-semibold hover:opacity-90 press transition-all">
+          <button className="w-full py-3.5 rounded-card grad-accent text-white text-[15px] font-semibold hover:opacity-90 press transition-all">
             Pro freischalten · €59,99/Jahr
           </button>
           <p className="text-center text-[12px] text-text-muted mt-2.5">Abi-Schnitt unserer Pro-Nutzer: Ø 1.7</p>
@@ -152,7 +152,7 @@ export function ProfilScreen() {
                 </div>
                 <button
                   onClick={handleProToggle}
-                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 press-sm shrink-0 ${isPro ? 'bg-accent' : 'bg-border'}`}
+                  className={`relative w-12 h-6 rounded-full transition-all duration-200 press-sm shrink-0 ${isPro ? 'grad-accent' : 'bg-border'}`}
                 >
                   <span
                     className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200"

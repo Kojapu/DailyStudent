@@ -77,7 +77,7 @@ export function LessonScreen() {
       {/* FAB */}
       <button
         onClick={() => navigate(`/unterricht/${id}/neue-notiz`)}
-        className="fixed bottom-28 right-5 bg-accent text-white rounded-pill px-5 py-3.5 font-semibold text-[15px] shadow-float press transition-all flex items-center gap-2"
+        className="fixed bottom-28 right-5 grad-accent text-white rounded-pill px-5 py-3.5 font-semibold text-[15px] shadow-float press transition-all flex items-center gap-2"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M12 5v14M5 12h14" strokeLinecap="round" />

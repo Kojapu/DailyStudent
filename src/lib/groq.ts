@@ -1,4 +1,4 @@
-import type { GeneratedSmartNote } from '../types'
+import type { GeneratedSmartNote, StundenplanSlot } from '../types'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
@@ -403,4 +403,165 @@ Regeln:
     generatedAt: new Date().toISOString(),
     subjectName,
   }
+}
+
+/* ─── Stundenplan-Scanner ────────────────────────────────── */
+
+const SUBJECT_ALIASES: Record<string, string> = {
+  ma: 'mathematik', mathe: 'mathematik', math: 'mathematik',
+  bi: 'biologie', bio: 'biologie',
+  ph: 'physik', phy: 'physik', physi: 'physik',
+  ch: 'chemie', che: 'chemie',
+  ge: 'geschichte', ges: 'geschichte', hist: 'geschichte',
+  de: 'deutsch', deu: 'deutsch',
+  en: 'englisch', eng: 'englisch',
+  fr: 'franzoesisch', frz: 'franzoesisch', fran: 'franzoesisch',
+  lat: 'latein',
+  sp: 'spanisch', spa: 'spanisch',
+  geo: 'geographie', erd: 'geographie',
+  pol: 'politik', soz: 'politik',
+  ku: 'kunst', kuns: 'kunst',
+  mu: 'musik', mus: 'musik',
+  spo: 'sport',
+  re: 'religion', rel: 'religion', eth: 'religion', ethik: 'religion',
+  inf: 'informatik', info: 'informatik',
+  wir: 'wirtschaft', wirt: 'wirtschaft',
+}
+
+function matchSubjectId(
+  detected: string,
+  faecher: { id: string; name: string }[],
+): string | null {
+  const lower = detected.toLowerCase().trim()
+  // Exact match by id or name
+  const byExact = faecher.find((s) => s.id === lower || s.name.toLowerCase() === lower)
+  if (byExact) return byExact.id
+  // Alias table
+  const aliasId = SUBJECT_ALIASES[lower]
+  if (aliasId && faecher.find((s) => s.id === aliasId)) return aliasId
+  // Alias prefix (e.g. "Mathe Klausur" → "mathe")
+  for (const [alias, id] of Object.entries(SUBJECT_ALIASES)) {
+    if (lower.startsWith(alias) && faecher.find((s) => s.id === id)) return id
+  }
+  // Substring containment
+  const bySub = faecher.find(
+    (s) => lower.includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(lower),
+  )
+  if (bySub) return bySub.id
+  // 3-char prefix fallback
+  if (lower.length >= 3) {
+    const byPfx = faecher.find(
+      (s) =>
+        s.name.toLowerCase().startsWith(lower.slice(0, 3)) ||
+        lower.startsWith(s.name.toLowerCase().slice(0, 3)),
+    )
+    if (byPfx) return byPfx.id
+  }
+  return null
+}
+
+interface StundenplanRawJSON {
+  slots: Array<{ day: number; startTime: string; endTime?: string; subject: string }>
+}
+
+function calcEndTime(startTime: string): string {
+  const [h, m] = startTime.split(':').map(Number)
+  const endMin = h * 60 + m + 45
+  return `${String(Math.floor(endMin / 60) % 24).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`
+}
+
+export async function parseStundenplanFromImage(
+  file: File,
+  faecher: { id: string; name: string }[],
+): Promise<StundenplanSlot[]> {
+  // PDF → first page as JPEG data URL via pdfjs
+  let dataUrl: string
+  if (file.type === 'application/pdf') {
+    const { pdfToImages } = await import('./pdf')
+    const images = await pdfToImages(file)
+    if (!images[0]) throw new Error('PDF konnte nicht gelesen werden')
+    dataUrl = images[0]
+  } else {
+    dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target!.result as string)
+      reader.onerror = () => reject(new Error('Bild konnte nicht gelesen werden'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const { base64, mimeType } = await resizeImage(dataUrl, 1920)
+  const subjectList = faecher.map((s) => s.name).join(', ')
+
+  const raw = await groqFetch({
+    model: VISION_MODEL,
+    max_tokens: 1500,
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          {
+            type: 'text',
+            text: `Du analysierst einen deutschen Schulstundenplan. Extrahiere alle Unterrichtsstunden Montag bis Freitag.
+
+Schulfächer des Schülers: ${subjectList}
+
+Antworte NUR mit diesem JSON (kein anderer Text):
+{
+  "slots": [
+    { "day": 0, "startTime": "08:00", "endTime": "08:45", "subject": "Mathematik" }
+  ]
+}
+
+Regeln:
+- day: 0=Montag, 1=Dienstag, 2=Mittwoch, 3=Donnerstag, 4=Freitag
+- startTime / endTime im Format "HH:MM" — fehlt Endzeit: startTime + 45 Min schätzen
+- subject: Fachname genau wie abgedruckt (Abkürzungen übernehmen, z.B. "Ma", "Bio")
+- Freistunden, Pausen, leere Zellen NICHT aufnehmen`,
+          },
+        ],
+      },
+    ],
+  })
+
+  // Robustly extract JSON block in case model adds prose
+  const jsonMatch = raw.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) throw new Error('KI hat keinen Stundenplan erkannt — prüfe das Foto')
+  const parsed = JSON.parse(jsonMatch[0]) as StundenplanRawJSON
+  if (!Array.isArray(parsed.slots)) throw new Error('Unerwartetes Antwortformat')
+
+  const seen = new Set<string>()
+  const result: StundenplanSlot[] = []
+
+  for (const slot of parsed.slots) {
+    if (typeof slot.day !== 'number' || slot.day < 0 || slot.day > 4) continue
+    if (!slot.startTime || !/^\d{1,2}:\d{2}$/.test(slot.startTime)) continue
+
+    // Normalise to HH:MM
+    const startTime = slot.startTime.padStart(5, '0')
+    const endTime =
+      slot.endTime && /^\d{1,2}:\d{2}$/.test(slot.endTime)
+        ? slot.endTime.padStart(5, '0')
+        : calcEndTime(startTime)
+
+    const subjectId = matchSubjectId(slot.subject ?? '', faecher)
+    if (!subjectId) continue
+
+    const key = `${slot.day}-${startTime}-${subjectId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    result.push({
+      id: `slot-ai-${slot.day}-${startTime.replace(':', '')}-${Math.random().toString(36).slice(2, 6)}`,
+      day: slot.day,
+      startTime,
+      endTime,
+      subjectId,
+    })
+  }
+
+  if (result.length === 0) throw new Error('Keine bekannten Fächer im Stundenplan erkannt')
+  return result
 }

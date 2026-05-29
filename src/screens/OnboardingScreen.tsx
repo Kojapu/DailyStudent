@@ -4,7 +4,9 @@ import { Button } from '../components/ui/Button'
 import { useUser, generateKcFolders } from '../context/UserContext'
 import { type UserProfile } from '../context/UserContext'
 import { analyzeFileToSmartNote, suggestImportDestination, GEMINI_BATCH_DELAY_MS } from '../lib/gemini'
-import type { UserNote } from '../types'
+import type { UserNote, StundenplanSlot } from '../types'
+import { SUBJECT_INFO, SUBJECT_GROUPS } from '../data/subjectInfo'
+import { parseStundenplanFromImage } from '../lib/groq'
 
 const BUNDESLAENDER = [
   { id: 'by', name: 'Bayern' },
@@ -25,40 +27,10 @@ const BUNDESLAENDER = [
   { id: 'th', name: 'Thüringen' },
 ]
 
-const SUBJECTS: Record<string, { name: string; icon: string; color: string }> = {
-  deutsch:      { name: 'Deutsch',          icon: '📖', color: '#4ADE80' },
-  mathematik:   { name: 'Mathematik',       icon: '📐', color: '#6366F1' },
-  englisch:     { name: 'Englisch',         icon: '🌍', color: '#38BDF8' },
-  franzoesisch: { name: 'Französisch',      icon: '🗼', color: '#2DD4BF' },
-  latein:       { name: 'Latein',           icon: '🏺', color: '#C084FC' },
-  spanisch:     { name: 'Spanisch',         icon: '🌶️', color: '#059669' },
-  biologie:     { name: 'Biologie',         icon: '🧬', color: '#FACC15' },
-  chemie:       { name: 'Chemie',           icon: '🧪', color: '#34D399' },
-  physik:       { name: 'Physik',           icon: '⚛️', color: '#818CF8' },
-  geschichte:   { name: 'Geschichte',       icon: '🏛️', color: '#F87171' },
-  politik:      { name: 'Politik / Soz.',   icon: '⚖️', color: '#6366F1' },
-  geographie:   { name: 'Geographie',       icon: '🗺️', color: '#A78BFA' },
-  kunst:        { name: 'Kunst',            icon: '🎨', color: '#E879F9' },
-  musik:        { name: 'Musik',            icon: '🎵', color: '#EC4899' },
-  sport:        { name: 'Sport',            icon: '🏃', color: '#F472B6' },
-  religion:     { name: 'Religion / Ethik', icon: '🙏', color: '#D97706' },
-  informatik:   { name: 'Informatik',       icon: '💻', color: '#60A5FA' },
-  wirtschaft:   { name: 'Wirtschaft',       icon: '📊', color: '#FB923C' },
-}
-
-const SUBJECT_GROUPS = [
-  { label: 'Kernfächer',            ids: ['deutsch', 'mathematik', 'englisch'] },
-  { label: 'Sprachen',              ids: ['franzoesisch', 'latein', 'spanisch'] },
-  { label: 'Naturwissenschaften',   ids: ['biologie', 'chemie', 'physik'] },
-  { label: 'Gesellschaftswiss.',    ids: ['geschichte', 'politik', 'geographie'] },
-  { label: 'Kunst & Sport',         ids: ['kunst', 'musik', 'sport', 'religion'] },
-  { label: 'Weiteres',              ids: ['informatik', 'wirtschaft'] },
-]
-
 const KLASSEN = ['10', '11', '12', '13']
 const SCHULFORMEN = ['Gymnasium', 'FOS', 'Gesamtschule']
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 
 const DEV_PROFILE: UserProfile = {
   name: 'Simon Happ',
@@ -69,6 +41,19 @@ const DEV_PROFILE: UserProfile = {
   faecher: ['englisch', 'mathematik', 'biologie', 'physik', 'religion'],
   klausurtermine: [{ subjectId: 'mathematik', date: '2026-06-06' }],
   isDevMode: true,
+  stundenplan: {
+    createdAt: new Date().toISOString(),
+    slots: [
+      { id: 'dev-s1', day: 0, startTime: '08:00', endTime: '08:45', subjectId: 'mathematik' },
+      { id: 'dev-s2', day: 0, startTime: '09:00', endTime: '09:45', subjectId: 'englisch' },
+      { id: 'dev-s3', day: 0, startTime: '11:00', endTime: '11:45', subjectId: 'biologie' },
+      { id: 'dev-s4', day: 1, startTime: '08:00', endTime: '08:45', subjectId: 'physik' },
+      { id: 'dev-s5', day: 1, startTime: '10:00', endTime: '10:45', subjectId: 'religion' },
+      { id: 'dev-s6', day: 2, startTime: '09:00', endTime: '09:45', subjectId: 'mathematik' },
+      { id: 'dev-s7', day: 3, startTime: '08:00', endTime: '08:45', subjectId: 'englisch' },
+      { id: 'dev-s8', day: 4, startTime: '10:00', endTime: '10:45', subjectId: 'biologie' },
+    ],
+  },
 }
 
 export function OnboardingScreen() {
@@ -83,10 +68,11 @@ export function OnboardingScreen() {
   const [zielnote, setZielnote] = useState('')
   const [bundeslandId, setBundeslandId] = useState('')
   const [faecher, setFaecher] = useState<string[]>([])
+  const [stundenplanSlots, setStundenplanSlots] = useState<StundenplanSlot[]>([])
   const [klausurSubject, setKlausurSubject] = useState('')
   const [klausurDate, setKlausurDate] = useState('')
 
-  const progress = (step / 7) * 100
+  const progress = (step / 8) * 100
 
   const canNext: Record<Step, boolean> = {
     1: true,
@@ -94,12 +80,13 @@ export function OnboardingScreen() {
     3: true,
     4: bundeslandId !== '',
     5: faecher.length > 0,
-    6: true, // optional — StepDateiImport manages its own footer
-    7: true,
+    6: true, // Stundenplan optional — manages own footer
+    7: true, // DateiImport manages own footer
+    8: true, // Klausur optional
   }
 
   const next = () => {
-    if (step < 7) setStep((s) => (s + 1) as Step)
+    if (step < 8) setStep((s) => (s + 1) as Step)
   }
 
   const back = () => {
@@ -127,6 +114,9 @@ export function OnboardingScreen() {
           ? [{ subjectId: klausurSubject, date: klausurDate }]
           : [],
       zielnote: zielnote || undefined,
+      stundenplan: stundenplanSlots.length > 0
+        ? { slots: stundenplanSlots, createdAt: new Date().toISOString() }
+        : undefined,
     }
     setTimeout(() => { completeOnboarding(profile); navigate('/unterricht') }, 800)
   }
@@ -151,7 +141,7 @@ export function OnboardingScreen() {
       {step > 1 && (
         <div className="fixed top-0 left-0 right-0 h-1 bg-border z-10 max-w-lg mx-auto">
           <div
-            className="h-full bg-accent transition-all duration-300"
+            className="h-full grad-accent transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -189,9 +179,17 @@ export function OnboardingScreen() {
           <StepFaecher selected={faecher} onToggle={toggleFach} />
         )}
         {step === 6 && (
-          <StepDateiImport onNext={next} faecher={faecher} />
+          <StepStundenplan
+            faecher={faecher}
+            slots={stundenplanSlots}
+            setSlots={setStundenplanSlots}
+            onNext={next}
+          />
         )}
         {step === 7 && (
+          <StepDateiImport onNext={next} faecher={faecher} />
+        )}
+        {step === 8 && (
           <StepKlausur
             faecher={faecher}
             subject={klausurSubject} setSubject={setKlausurSubject}
@@ -200,10 +198,10 @@ export function OnboardingScreen() {
         )}
       </div>
 
-      {/* Footer CTA — step 6 manages its own footer */}
-      {step > 1 && step !== 6 && (
+      {/* Footer CTA — steps 6 (Stundenplan) and 7 (DateiImport) manage their own footer */}
+      {step > 1 && step !== 6 && step !== 7 && (
         <div className="px-6 pb-10 pt-4">
-          {step < 7 ? (
+          {step < 8 ? (
             <Button variant="primary" fullWidth onClick={next} disabled={!canNext[step]}>
               Weiter
             </Button>
@@ -486,7 +484,7 @@ function StepPersonal({
             onClick={() => setKlasse(k)}
             className={`py-3 rounded-card text-sm font-bold border transition-all duration-150 ${
               klasse === k
-                ? 'bg-accent border-accent text-white'
+                ? 'grad-accent border-transparent text-white'
                 : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
             }`}
           >
@@ -503,7 +501,7 @@ function StepPersonal({
             onClick={() => setSchulform(sf)}
             className={`py-3 rounded-card text-sm font-medium border transition-all duration-150 ${
               schulform === sf
-                ? 'bg-accent border-accent text-white'
+                ? 'grad-accent border-transparent text-white'
                 : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
             }`}
           >
@@ -529,7 +527,501 @@ function StepZielnote({ zielnote, setZielnote }: { zielnote: string; setZielnote
   )
 }
 
-/* ─── Step 6: Datei-Import ────────────────────────────────── */
+/* ─── Step 4: Bundesland ──────────────────────────────────── */
+
+function StepBundesland({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-text-primary mb-1">Wo gehst du zur Schule?</h2>
+      <p className="text-text-muted text-sm mb-6">Wir laden deinen Lehrplan automatisch.</p>
+
+      <div className="grid grid-cols-2 gap-2">
+        {BUNDESLAENDER.map((bl) => (
+          <button
+            key={bl.id}
+            onClick={() => onSelect(bl.id)}
+            className={`py-3 px-3 rounded-card text-sm font-medium border text-left transition-all duration-150 ${
+              selected === bl.id
+                ? 'grad-accent border-transparent text-white'
+                : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            {bl.name}
+          </button>
+        ))}
+      </div>
+
+      {selected && (
+        <div className="mt-5 flex items-center gap-2 text-success text-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Lehrplan {BUNDESLAENDER.find(b => b.id === selected)?.name} wird vorbereitet
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Step 5: Fächer ──────────────────────────────────────── */
+
+function StepFaecher({ selected, onToggle }: { selected: string[]; onToggle: (id: string) => void }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-text-primary mb-1">Deine Fächer</h2>
+      <p className="text-text-muted text-sm mb-5">
+        Wähle alle Fächer, die du lernst. <span className="text-accent font-medium">{selected.length} ausgewählt</span>
+      </p>
+
+      <div className="space-y-5">
+        {SUBJECT_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+              {group.label}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {group.ids.map((id) => {
+                const subject = SUBJECT_INFO[id]
+                const active = selected.includes(id)
+                return (
+                  <button
+                    key={id}
+                    onClick={() => onToggle(id)}
+                    className={`relative flex items-center gap-3 p-3 rounded-card border text-left transition-all duration-150 ${
+                      active ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:bg-surface-hover'
+                    }`}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-btn flex items-center justify-center text-lg shrink-0"
+                      style={{ backgroundColor: `${subject.color}22` }}
+                    >
+                      {subject.icon}
+                    </div>
+                    <p className={`text-xs font-semibold leading-tight ${active ? 'text-text-primary' : 'text-text-secondary'}`}>
+                      {subject.name}
+                    </p>
+                    {active && (
+                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full grad-accent flex items-center justify-center shrink-0">
+                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Step 6: SmartStundenplan ────────────────────────────── */
+
+type StundenplanMode = 'choose' | 'manual' | 'scan'
+type ScanPhase = 'idle' | 'analyzing' | 'error'
+
+const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr'] as const
+
+function StepStundenplan({
+  faecher,
+  slots,
+  setSlots,
+  onNext,
+}: {
+  faecher: string[]
+  slots: StundenplanSlot[]
+  setSlots: (s: StundenplanSlot[]) => void
+  onNext: () => void
+}) {
+  const [mode, setMode] = useState<StundenplanMode>('choose')
+  const [activeDay, setActiveDay] = useState(0)
+  const [addingSlot, setAddingSlot] = useState(false)
+  const [newSlot, setNewSlot] = useState({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [scanFile, setScanFile] = useState<File | null>(null)
+  const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
+  const [scanError, setScanError] = useState('')
+  const [fromAI, setFromAI] = useState(false)
+
+  const profileSubjects = faecher
+    .map((id) => (SUBJECT_INFO[id] ? { id, ...SUBJECT_INFO[id] } : null))
+    .filter((s): s is { id: string; name: string; icon: string; color: string } => s !== null)
+
+  const daySlots = slots
+    .filter((s) => s.day === activeDay)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+  const totalSlots = slots.length
+
+  const handleStartTime = (startTime: string) => {
+    const [h, m] = startTime.split(':').map(Number)
+    const endMin = h * 60 + m + 45
+    const endTime = `${String(Math.floor(endMin / 60) % 24).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`
+    setNewSlot((n) => ({ ...n, startTime, endTime }))
+  }
+
+  const commitSlot = () => {
+    if (!newSlot.subjectId) return
+    const slot: StundenplanSlot = {
+      id: `slot-${Date.now()}`,
+      day: activeDay,
+      startTime: newSlot.startTime,
+      endTime: newSlot.endTime,
+      subjectId: newSlot.subjectId,
+      room: newSlot.room || undefined,
+    }
+    setSlots([...slots, slot])
+    setAddingSlot(false)
+    setNewSlot({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
+  }
+
+  const removeSlot = (id: string) => setSlots(slots.filter((s) => s.id !== id))
+
+  const handleScanFileSelect = async (file: File) => {
+    setScanFile(file)
+    setScanPhase('analyzing')
+    setScanError('')
+    try {
+      const detected = await parseStundenplanFromImage(file, profileSubjects)
+      setSlots(detected)
+      setFromAI(true)
+      setMode('manual')
+    } catch (err) {
+      setScanPhase('error')
+      setScanError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen')
+    }
+  }
+
+  // ── CHOOSE MODE ─────────────────────────────────────────────
+  if (mode === 'choose') {
+    return (
+      <div className="flex flex-col min-h-[calc(100vh-80px)]">
+        <div className="flex-1">
+          <h2 className="text-2xl font-bold text-text-primary mb-1">Dein Stundenplan</h2>
+          <p className="text-text-muted text-sm mb-8">
+            Optional — hilft der App, deinen Schultag zu strukturieren und dich besser zu begleiten.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => setMode('manual')}
+              className="w-full flex items-center gap-4 bg-surface border border-border rounded-[20px] p-5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all duration-150"
+            >
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center text-2xl shrink-0">✏️</div>
+              <div className="flex-1">
+                <p className="text-text-primary font-semibold text-[15px]">Manuell eintragen</p>
+                <p className="text-text-muted text-[13px] mt-0.5">Fächer und Zeiten selbst eingeben</p>
+              </div>
+              <svg className="text-text-muted shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setMode('scan')}
+              className="w-full flex items-center gap-4 bg-surface border border-border rounded-[20px] p-5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all duration-150"
+            >
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center text-2xl shrink-0">📷</div>
+              <div className="flex-1">
+                <p className="text-text-primary font-semibold text-[15px]">Foto / Scan hochladen</p>
+                <p className="text-text-muted text-[13px] mt-0.5">Stundenplan fotografieren oder PDF importieren</p>
+              </div>
+              <svg className="text-text-muted shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="pt-6">
+          <button
+            onClick={onNext}
+            className="w-full py-3 text-sm text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Jetzt überspringen
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── SCAN MODE ───────────────────────────────────────────────
+  if (mode === 'scan') {
+    return (
+      <div className="flex flex-col min-h-[calc(100vh-80px)]">
+        <div className="flex-1">
+          <button
+            onClick={() => { setMode('choose'); setScanPhase('idle'); setScanError(''); setScanFile(null) }}
+            className="flex items-center gap-1.5 text-text-muted text-sm mb-6 hover:text-text-secondary transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Zurück
+          </button>
+          <h2 className="text-2xl font-bold text-text-primary mb-1">Stundenplan scannen</h2>
+          <p className="text-text-muted text-sm mb-8">Foto oder PDF — KI erkennt Fächer und Zeiten automatisch</p>
+
+          {/* IDLE — upload area */}
+          {scanPhase === 'idle' && (
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full border-2 border-dashed border-border rounded-[20px] p-8 flex flex-col items-center gap-3 hover:border-accent/50 hover:bg-accent/5 transition-all"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center text-3xl">📷</div>
+              <div className="text-center">
+                <p className="text-text-primary font-semibold text-base">Foto oder PDF auswählen</p>
+                <p className="text-text-muted text-sm mt-1">JPG, PNG oder PDF</p>
+              </div>
+            </button>
+          )}
+
+          {/* ANALYZING — spinner */}
+          {scanPhase === 'analyzing' && (
+            <div className="bg-surface border border-border rounded-[20px] p-6 flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-[3px] border-accent/25 border-t-accent rounded-full animate-spin" />
+              <div className="text-center">
+                <p className="text-text-primary font-semibold text-[15px]">KI analysiert Stundenplan…</p>
+                <p className="text-text-muted text-[13px] mt-1 truncate max-w-[220px]">{scanFile?.name}</p>
+              </div>
+            </div>
+          )}
+
+          {/* ERROR */}
+          {scanPhase === 'error' && (
+            <div className="space-y-3">
+              <div className="rounded-[20px] p-5" style={{ background: 'rgba(var(--color-danger),0.08)', border: '1px solid rgba(var(--color-danger),0.25)' }}>
+                <p className="text-text-primary font-semibold text-[15px] mb-1">Erkennung fehlgeschlagen</p>
+                <p className="text-text-muted text-[13px] leading-relaxed">{scanError}</p>
+              </div>
+              <button
+                onClick={() => { setScanPhase('idle'); setScanFile(null); setScanError('') }}
+                className="w-full py-3.5 rounded-[20px] grad-accent text-white text-[15px] font-semibold hover:opacity-90 active:scale-95 transition-all"
+              >
+                Erneut versuchen
+              </button>
+              <button
+                onClick={() => { setMode('manual'); setScanPhase('idle'); setScanError('') }}
+                className="w-full py-3 rounded-[20px] border border-border text-text-secondary text-[15px] font-medium hover:bg-surface-hover transition-colors"
+              >
+                Manuell eintragen
+              </button>
+            </div>
+          )}
+        </div>
+
+        {scanPhase !== 'analyzing' && scanPhase !== 'error' && (
+          <div className="pt-6 space-y-2">
+            <button
+              onClick={onNext}
+              className="w-full py-3 text-sm text-text-muted hover:text-text-secondary transition-colors"
+            >
+              Jetzt überspringen
+            </button>
+          </div>
+        )}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,image/*,application/pdf"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleScanFileSelect(f) }}
+        />
+      </div>
+    )
+  }
+
+  // ── MANUAL MODE ─────────────────────────────────────────────
+  return (
+    <div className="flex flex-col min-h-[calc(100vh-80px)]">
+      <div className="flex-1">
+        <button
+          onClick={() => { setMode('choose'); setAddingSlot(false); setFromAI(false) }}
+          className="flex items-center gap-1.5 text-text-muted text-sm mb-6 hover:text-text-secondary transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Zurück
+        </button>
+
+        {fromAI && totalSlots > 0 && (
+          <div className="mb-5 rounded-[14px] px-4 py-3 flex items-center gap-2.5" style={{ background: 'rgba(var(--color-success),0.08)', border: '1px solid rgba(var(--color-success),0.25)' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-success shrink-0">
+              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <p className="text-[13px] font-medium text-success">
+              {totalSlots} Stunden erkannt — prüfen & anpassen
+            </p>
+          </div>
+        )}
+
+        <h2 className="text-2xl font-bold text-text-primary mb-1">Stundenplan eintragen</h2>
+        <p className="text-text-muted text-sm mb-5">
+          {totalSlots > 0
+            ? `${totalSlots} Stunde${totalSlots === 1 ? '' : 'n'} eingetragen`
+            : 'Wähle einen Tag und trage deine Stunden ein.'}
+        </p>
+
+        {/* Day tabs */}
+        <div className="flex gap-1.5 mb-5">
+          {DAY_SHORT.map((d, i) => {
+            const count = slots.filter((s) => s.day === i).length
+            return (
+              <button
+                key={d}
+                onClick={() => { setActiveDay(i); setAddingSlot(false) }}
+                className={`flex-1 flex flex-col items-center py-2.5 rounded-[14px] transition-all duration-200 ${
+                  activeDay === i ? 'grad-accent' : 'bg-surface border border-border hover:bg-surface-hover'
+                }`}
+              >
+                <span className={`text-[11px] font-semibold ${activeDay === i ? 'text-white/80' : 'text-text-muted'}`}>{d}</span>
+                <span className={`text-[13px] font-bold mt-0.5 ${activeDay === i ? 'text-white' : count > 0 ? 'text-accent' : 'text-text-muted/30'}`}>
+                  {count > 0 ? count : '·'}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Slot list */}
+        <div className="space-y-2 mb-3">
+          {daySlots.map((slot) => {
+            const subj = SUBJECT_INFO[slot.subjectId]
+            return (
+              <div key={slot.id} className="bg-surface border border-border/60 rounded-card p-3.5 flex items-center gap-3 animate-fade-in">
+                <div
+                  className="w-9 h-9 rounded-btn flex items-center justify-center text-lg shrink-0"
+                  style={{ backgroundColor: `${subj?.color ?? '#7C3AED'}22` }}
+                >
+                  {subj?.icon ?? '📚'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-text-primary font-semibold text-[14px]">{subj?.name ?? slot.subjectId}</p>
+                  <p className="text-text-muted text-[12px]">
+                    {slot.startTime} – {slot.endTime}
+                    {slot.room ? ` · ${slot.room}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removeSlot(slot.id)}
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0 press-sm"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Add slot trigger or inline form */}
+        {!addingSlot ? (
+          <button
+            onClick={() => setAddingSlot(true)}
+            className="w-full border border-dashed border-border rounded-card py-3.5 flex items-center justify-center gap-2 text-text-muted hover:border-accent/50 hover:text-accent hover:bg-accent/5 transition-all duration-200"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+            </svg>
+            <span className="text-[13px] font-medium">Stunde hinzufügen</span>
+          </button>
+        ) : (
+          <div className="bg-surface border border-accent/30 rounded-[20px] p-4 space-y-3">
+            {/* Time row */}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Von</p>
+                <input
+                  type="time"
+                  value={newSlot.startTime}
+                  onChange={(e) => handleStartTime(e.target.value)}
+                  className="w-full bg-background border border-border rounded-card px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
+                />
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Bis</p>
+                <input
+                  type="time"
+                  value={newSlot.endTime}
+                  onChange={(e) => setNewSlot((n) => ({ ...n, endTime: e.target.value }))}
+                  className="w-full bg-background border border-border rounded-card px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Subject picker */}
+            <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Fach</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {profileSubjects.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setNewSlot((n) => ({ ...n, subjectId: s.id }))}
+                  className={`flex items-center gap-2 p-2.5 rounded-card border text-left transition-all duration-150 ${
+                    newSlot.subjectId === s.id
+                      ? 'border-accent bg-accent-soft'
+                      : 'border-border bg-background hover:bg-surface-hover'
+                  }`}
+                >
+                  <span className="text-base shrink-0">{s.icon}</span>
+                  <span className={`text-[11px] font-medium leading-tight truncate ${newSlot.subjectId === s.id ? 'text-text-primary' : 'text-text-secondary'}`}>
+                    {s.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Room optional */}
+            <input
+              type="text"
+              value={newSlot.room}
+              onChange={(e) => setNewSlot((n) => ({ ...n, room: e.target.value }))}
+              placeholder="Raum (optional, z.B. A204)"
+              className="w-full bg-background border border-border rounded-card px-3 py-2.5 text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+            />
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => {
+                  setAddingSlot(false)
+                  setNewSlot({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
+                }}
+                className="flex-1 py-2.5 rounded-card border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={commitSlot}
+                disabled={!newSlot.subjectId}
+                className="flex-1 py-2.5 rounded-card grad-accent text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all"
+              >
+                Hinzufügen
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="pt-6 space-y-2">
+        <Button variant="primary" fullWidth onClick={onNext}>
+          {totalSlots > 0 ? `Fertig · ${totalSlots} Stunde${totalSlots === 1 ? '' : 'n'}` : 'Weiter'}
+        </Button>
+        {totalSlots === 0 && (
+          <button
+            onClick={onNext}
+            className="w-full py-2 text-sm text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Jetzt überspringen
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Step 7: Datei-Import ────────────────────────────────── */
 
 type ImportPhase = 'idle' | 'suggesting' | 'suggested' | 'manual' | 'processing' | 'done'
 
@@ -547,7 +1039,7 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
   const [failed, setFailed] = useState(0)
 
   const profileSubjects = faecher
-    .map((id) => SUBJECTS[id] ? { id, ...SUBJECTS[id] } : null)
+    .map((id) => SUBJECT_INFO[id] ? { id, ...SUBJECT_INFO[id] } : null)
     .filter((s): s is { id: string; name: string; icon: string; color: string } => s !== null)
 
   const handleSelect = (fileList: FileList | null) => {
@@ -585,7 +1077,6 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
     setFailed(0)
     cancelRef.current = false
 
-    // Auto-create "Importiert" folder for the matched subject (survives completeOnboarding since isAutoGenerated: false)
     let targetFolderId: string | undefined
     if (subjectId) {
       const importFolderId = `folder-import-${subjectId}`
@@ -704,7 +1195,7 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
                 </div>
                 <button
                   onClick={() => void startProcessing(suggestion.subjectId)}
-                  className="w-full py-3.5 rounded-[20px] bg-accent text-white text-[15px] font-semibold hover:opacity-90 active:scale-95 transition-all"
+                  className="w-full py-3.5 rounded-[20px] grad-accent text-white text-[15px] font-semibold hover:opacity-90 active:scale-95 transition-all"
                 >
                   Vorschlag annehmen
                 </button>
@@ -763,7 +1254,7 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
             <p className="text-text-muted text-sm">{succeeded + failed} von {files.length} verarbeitet</p>
             <div className="mt-3 h-1.5 bg-border/40 rounded-pill overflow-hidden">
               <div
-                className="h-full bg-accent rounded-pill transition-all duration-500"
+                className="h-full grad-accent rounded-pill transition-all duration-500"
                 style={{ width: `${files.length > 0 ? ((succeeded + failed) / files.length) * 100 : 0}%` }}
               />
             </div>
@@ -826,98 +1317,7 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
   )
 }
 
-/* ─── Step 5: Bundesland ──────────────────────────────────── */
-
-function StepBundesland({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-text-primary mb-1">Wo gehst du zur Schule?</h2>
-      <p className="text-text-muted text-sm mb-6">Wir laden deinen Lehrplan automatisch.</p>
-
-      <div className="grid grid-cols-2 gap-2">
-        {BUNDESLAENDER.map((bl) => (
-          <button
-            key={bl.id}
-            onClick={() => onSelect(bl.id)}
-            className={`py-3 px-3 rounded-card text-sm font-medium border text-left transition-all duration-150 ${
-              selected === bl.id
-                ? 'bg-accent border-accent text-white'
-                : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
-            }`}
-          >
-            {bl.name}
-          </button>
-        ))}
-      </div>
-
-      {selected && (
-        <div className="mt-5 flex items-center gap-2 text-success text-sm">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Lehrplan {BUNDESLAENDER.find(b => b.id === selected)?.name} wird vorbereitet
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ─── Step 6: Fächer ──────────────────────────────────────── */
-
-function StepFaecher({ selected, onToggle }: { selected: string[]; onToggle: (id: string) => void }) {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-text-primary mb-1">Deine Fächer</h2>
-      <p className="text-text-muted text-sm mb-5">
-        Wähle alle Fächer, die du lernst. <span className="text-accent font-medium">{selected.length} ausgewählt</span>
-      </p>
-
-      <div className="space-y-5">
-        {SUBJECT_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
-              {group.label}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {group.ids.map((id) => {
-                const subject = SUBJECTS[id]
-                const active = selected.includes(id)
-                return (
-                  <button
-                    key={id}
-                    onClick={() => onToggle(id)}
-                    className={`relative flex items-center gap-3 p-3 rounded-card border text-left transition-all duration-150 ${
-                      active ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:bg-surface-hover'
-                    }`}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-btn flex items-center justify-center text-lg shrink-0"
-                      style={{ backgroundColor: `${subject.color}22` }}
-                    >
-                      {subject.icon}
-                    </div>
-                    <p className={`text-xs font-semibold leading-tight ${active ? 'text-text-primary' : 'text-text-secondary'}`}>
-                      {subject.name}
-                    </p>
-                    {active && (
-                      <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-accent flex items-center justify-center shrink-0">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/* ─── Step 7: Erste Klausur ───────────────────────────────── */
+/* ─── Step 8: Erste Klausur ───────────────────────────────── */
 
 function StepKlausur({
   faecher,
@@ -928,7 +1328,7 @@ function StepKlausur({
   subject: string; setSubject: (v: string) => void
   date: string; setDate: (v: string) => void
 }) {
-  const available = faecher.map((id) => ({ id, ...SUBJECTS[id] })).filter((s) => s.name)
+  const available = faecher.map((id) => ({ id, ...SUBJECT_INFO[id] })).filter((s) => s.name)
 
   return (
     <div>
@@ -945,7 +1345,7 @@ function StepKlausur({
             onClick={() => setSubject(s.id)}
             className={`flex items-center gap-3 py-3 px-4 rounded-card border text-left transition-all duration-150 ${
               subject === s.id
-                ? 'bg-accent border-accent text-white'
+                ? 'grad-accent border-transparent text-white'
                 : 'bg-surface border-border text-text-secondary hover:bg-surface-hover'
             }`}
           >
@@ -964,7 +1364,7 @@ function StepKlausur({
             onChange={(e) => setDate(e.target.value)}
             min={new Date().toISOString().slice(0, 10)}
             className="w-full bg-surface border border-border rounded-card px-4 py-3.5 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
-                     />
+          />
         </>
       )}
     </div>

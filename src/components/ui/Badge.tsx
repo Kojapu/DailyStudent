@@ -6,10 +6,10 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 export function Badge({ color = 'accent', className = '', children, ...props }: BadgeProps) {
   const colors = {
-    accent:  'bg-accent/10 text-accent',
-    success: 'bg-success/10 text-success',
-    warning: 'bg-warning/10 text-warning',
-    danger:  'bg-danger/10 text-danger',
+    accent:  'icon-accent text-accent',
+    success: 'icon-success text-success',
+    warning: 'icon-warning text-warning',
+    danger:  'icon-danger text-danger',
     muted:   'bg-surface-hover text-text-muted',
   }
 

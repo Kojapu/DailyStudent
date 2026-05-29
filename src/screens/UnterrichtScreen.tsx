@@ -280,7 +280,7 @@ export function UnterrichtScreen() {
             >
               <div
                 className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
-                style={{ background: 'linear-gradient(145deg, #5B8AF5, #3461D1)' }}
+                style={{ background: 'linear-gradient(145deg, #34C759, #1D9A38)' }}
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2">
                   <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -337,13 +337,6 @@ export function UnterrichtScreen() {
             const totalNotes = userNotes.filter((n) => n.subjectId === subject.id).length
             const isExpanded = expandedSubjects.has(subject.id)
 
-            const foldersByHalfYear = halfYears.map((hy) => ({
-              halfYear: hy,
-              folders: subjectFolders.filter((f) => f.halfYearId === hy.id),
-            })).filter((g) => g.folders.length > 0)
-
-            const ungroupedFolders = subjectFolders.filter((f) => !f.halfYearId)
-
             return (
               <div key={subject.id} className="bg-surface rounded-card shadow-card-adaptive border border-border/60 overflow-hidden">
                 <button
@@ -367,54 +360,18 @@ export function UnterrichtScreen() {
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-border/60">
-                    {foldersByHalfYear.map(({ halfYear, folders }) => (
-                      <div key={halfYear.id}>
-                        <div className="flex items-center gap-2 px-4 py-2 bg-background/50">
-                          <span className="text-[11px] font-semibold text-text-muted">{halfYear.name}</span>
-                          <span className="text-[11px] text-text-muted/60">{halfYear.period}</span>
-                          {halfYear.isCurrent && (
-                            <span className="ml-auto text-[11px] px-2 py-0.5 rounded-pill font-semibold bg-accent/10 text-accent">
-                              Aktuell
-                            </span>
-                          )}
-                        </div>
-                        {folders.map((folder) => (
-                          <FolderRow
-                            key={folder.id}
-                            folder={folder}
-                            noteCount={userNotes.filter((n) => n.folderId === folder.id).length}
-                            onClick={() => navigate(`/unterricht/${subject.id}/ordner/${folder.id}`)}
-                          />
-                        ))}
-                      </div>
-                    ))}
-
-                    {ungroupedFolders.map((folder) => (
-                      <FolderRow
-                        key={folder.id}
-                        folder={folder}
-                        noteCount={userNotes.filter((n) => n.folderId === folder.id).length}
-                        onClick={() => navigate(`/unterricht/${subject.id}/ordner/${folder.id}`)}
-                      />
-                    ))}
-
-                    {subjectFolders.length === 0 && (
-                      <div className="px-5 py-4 border-b border-border/60">
-                        <p className="text-text-muted text-[12px]">Noch keine Ordner</p>
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => openAddFolder(subject.id)}
-                      className="w-full flex items-center gap-3 pl-5 pr-4 py-3 hover:bg-surface-hover transition-colors border-t border-border/60 press-sm"
-                    >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
-                        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M12 11v6M9 14h6" strokeLinecap="round" />
-                      </svg>
-                      <span className="text-accent text-[13px] font-medium">Ordner hinzufügen</span>
-                    </button>
+                  <div className="border-t border-border/60 px-4 pt-5 pb-4">
+                    <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+                      {subjectFolders.map((folder) => (
+                        <FolderGridItem
+                          key={folder.id}
+                          name={folder.name}
+                          noteCount={userNotes.filter((n) => n.folderId === folder.id).length}
+                          onClick={() => navigate(`/unterricht/${subject.id}/ordner/${folder.id}`)}
+                        />
+                      ))}
+                      <AddFolderGridItem onClick={() => openAddFolder(subject.id)} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -439,7 +396,7 @@ export function UnterrichtScreen() {
             onClick={confirmAddFolder}
             disabled={!newFolderName.trim()}
             className={`w-full py-3.5 rounded-card text-[15px] font-semibold transition-all press ${
-              newFolderName.trim() ? 'bg-accent text-white hover:opacity-90' : 'bg-surface-hover text-text-muted cursor-not-allowed'
+              newFolderName.trim() ? 'grad-accent text-white hover:opacity-90' : 'bg-surface-hover text-text-muted cursor-not-allowed'
             }`}
           >
             Ordner erstellen
@@ -502,7 +459,7 @@ export function UnterrichtScreen() {
                     importSuggestion.subjectName,
                     importSuggestion.folderId,
                   )}
-                  className="w-full py-3.5 rounded-card bg-accent text-white text-[15px] font-semibold press hover:opacity-90 mb-2.5"
+                  className="w-full py-3.5 rounded-card grad-accent text-white text-[15px] font-semibold press hover:opacity-90 mb-2.5"
                 >
                   Vorschlag annehmen
                 </button>
@@ -604,7 +561,7 @@ export function UnterrichtScreen() {
                   <div key={hy.id}>
                     <div className="flex items-center gap-2 px-2 py-1.5">
                       <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{hy.name}</span>
-                      {hy.isCurrent && <span className="text-[10px] px-1.5 py-0.5 rounded-pill bg-accent/10 text-accent font-semibold">Aktuell</span>}
+                      {hy.isCurrent && <span className="text-[10px] px-1.5 py-0.5 rounded-pill icon-accent text-accent font-semibold">Aktuell</span>}
                     </div>
                     {folders.map((folder) => (
                       <button
@@ -651,7 +608,7 @@ export function UnterrichtScreen() {
             <p className="text-text-muted text-[12px] mb-4 truncate">{importFiles[importCurrent]?.name}</p>
             <div className="h-2 bg-border/40 rounded-pill overflow-hidden mb-4">
               <div
-                className="h-full bg-accent rounded-pill transition-all duration-500"
+                className="h-full grad-accent rounded-pill transition-all duration-500"
                 style={{ width: `${importFiles.length > 0 ? ((importSucceeded + importFailed) / importFiles.length) * 100 : 0}%` }}
               />
             </div>
@@ -699,7 +656,7 @@ export function UnterrichtScreen() {
                 <p className="text-text-muted text-[13px] mt-1">{importFailed} {importFailed === 1 ? 'Datei' : 'Dateien'} fehlgeschlagen</p>
               )}
             </div>
-            <button onClick={finishImport} className="w-full py-3.5 rounded-card bg-accent text-white text-[15px] font-semibold press hover:opacity-90">
+            <button onClick={finishImport} className="w-full py-3.5 rounded-card grad-accent text-white text-[15px] font-semibold press hover:opacity-90">
               {importSucceeded > 0 ? 'Zum Fach' : 'Schließen'}
             </button>
           </div>
@@ -710,31 +667,61 @@ export function UnterrichtScreen() {
   )
 }
 
-function FolderRow({
-  folder, noteCount, onClick,
+function FolderGridItem({
+  name, noteCount, onClick,
 }: {
-  folder: UserFolder; noteCount: number; onClick: () => void
+  name: string; noteCount: number; onClick: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 pl-5 pr-4 py-3.5 text-left hover:bg-surface-hover transition-colors border-b border-border/60 press-sm"
+      className="flex flex-col items-center gap-1.5 py-3 px-1 rounded-2xl active:bg-surface-hover press-sm transition-colors"
     >
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="w-px h-5 bg-border/60" />
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent shrink-0">
-          <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-medium text-text-primary truncate">{folder.name}</p>
-        <p className="text-text-muted text-[12px] mt-0.5">
-          {noteCount === 0 ? 'Noch keine Notizen' : `${noteCount} ${noteCount === 1 ? 'Notiz' : 'Notizen'}`}
-        </p>
-      </div>
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
-        <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+      <svg width="62" height="52" viewBox="0 0 62 52" fill="none">
+        {/* folder tab — darker blue as shadow/back */}
+        <path d="M0 17 L0 9.5 Q0 6.5 3 6.5 L21 6.5 Q23.5 6.5 25 9.5 L28 16 Z" fill="#2F6EC4"/>
+        {/* folder body — GoodNotes-style bright blue */}
+        <rect x="0" y="15" width="62" height="37" rx="7" fill="#5B9FEB"/>
+        {/* glossy top highlight */}
+        <rect x="0" y="15" width="62" height="7" rx="7" fill="white" fillOpacity="0.28"/>
       </svg>
+      <p className="text-[11px] font-semibold text-text-primary text-center line-clamp-2 leading-tight w-full">
+        {name}
+      </p>
+      <p className="text-[10px] text-text-muted">
+        {noteCount === 0 ? 'Leer' : `${noteCount} ${noteCount === 1 ? 'Notiz' : 'Notizen'}`}
+      </p>
+    </button>
+  )
+}
+
+function AddFolderGridItem({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-1.5 py-3 px-1 rounded-2xl active:bg-surface-hover press-sm transition-colors"
+    >
+      <div className="relative" style={{ width: 62, height: 52 }}>
+        <svg width="62" height="52" viewBox="0 0 62 52" fill="none" className="absolute inset-0 text-accent">
+          {/* ghost tab */}
+          <path d="M0 17 L0 9.5 Q0 6.5 3 6.5 L21 6.5 Q23.5 6.5 25 9.5 L28 16 Z"
+            fill="currentColor" fillOpacity="0.1"/>
+          {/* ghost body */}
+          <rect x="0" y="15" width="62" height="37" rx="7" fill="currentColor" fillOpacity="0.07"/>
+          {/* dashed border on body */}
+          <rect x="1" y="16" width="60" height="35" rx="6.5"
+            stroke="currentColor" strokeOpacity="0.3" strokeWidth="1.5" strokeDasharray="4 3"/>
+        </svg>
+        {/* + icon centered in body area */}
+        <div className="absolute inset-0 flex items-center justify-center" style={{ paddingTop: 12 }}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" className="text-accent">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
+          </svg>
+        </div>
+      </div>
+      <p className="text-[11px] font-semibold text-accent text-center">Neuer Ordner</p>
+      <p className="text-[10px] text-transparent select-none">·</p>
     </button>
   )
 }

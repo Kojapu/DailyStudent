@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import { type ReactNode } from 'react'
-import type { GeneratedSmartNote, UserFolder, UserNote } from '../types'
+import type { GeneratedSmartNote, UserFolder, UserNote, Stundenplan } from '../types'
 import { subjects, topics, halfYears } from '../data/mockData'
 
 export type EntryType = 'lerneinheit' | 'termin' | 'erinnerung'
@@ -22,6 +22,7 @@ export interface UserProfile {
   faecher: string[]
   klausurtermine: { subjectId: string; date: string }[]
   zielnote?: string
+  stundenplan?: Stundenplan
   isDevMode?: boolean
 }
 

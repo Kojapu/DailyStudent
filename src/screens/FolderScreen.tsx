@@ -34,7 +34,6 @@ export function FolderScreen() {
   const isDeletable = isNoSubject && folderId === NO_SUBJECT_FOLDER_ID
 
   const openNewFolder = () => {
-    setFabOpen(false)
     setNewFolderName('')
     setShowNewFolderModal(true)
   }
@@ -110,7 +109,7 @@ export function FolderScreen() {
                   onClick={() => navigate(subFolderUrl(sub.id))}
                   className="w-full bg-surface rounded-card shadow-card-adaptive border border-border/60 px-4 py-3.5 text-left press transition-all duration-150 flex items-center gap-3"
                 >
-                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0 bg-accent/10">
+                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0 icon-accent">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
                       <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
@@ -176,61 +175,70 @@ export function FolderScreen() {
         )}
       </div>
 
-      {/* Speed-dial backdrop */}
-      {!isNoSubject && fabOpen && (
-        <div className="fixed inset-0 z-30 bg-black/25" onClick={() => setFabOpen(false)} />
-      )}
-
-      {/* Speed-dial options */}
-      {!isNoSubject && (
+      {/* Tap-to-dismiss backdrop */}
+      {fabOpen && (
         <div
-          className={`fixed bottom-40 right-5 flex flex-col items-end gap-2.5 z-40 transition-all duration-200 ${
-            fabOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-3 pointer-events-none'
-          }`}
-        >
-          <button
-            onClick={openNewFolder}
-            className="flex items-center gap-2.5 bg-surface rounded-pill pl-4 pr-5 py-2.5 shadow-float border border-border/60 text-[14px] font-medium text-text-primary hover:bg-surface-hover press transition-all"
-          >
-            <div className="w-7 h-7 rounded-btn flex items-center justify-center shrink-0 bg-accent/10">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M12 11v6M9 14h6" strokeLinecap="round" />
-              </svg>
-            </div>
-            Neuer Ordner
-          </button>
-          <button
-            onClick={() => { setFabOpen(false); navigate(newNoteUrl) }}
-            className="flex items-center gap-2.5 bg-surface rounded-pill pl-4 pr-5 py-2.5 shadow-float border border-border/60 text-[14px] font-medium text-text-primary hover:bg-surface-hover press transition-all"
-          >
-            <div className="w-7 h-7 rounded-btn bg-accent/10 flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-accent">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M14 2v6h6M12 11v6M9 14h6" strokeLinecap="round" />
-              </svg>
-            </div>
-            Neue Notiz
-          </button>
-        </div>
+          className="fixed inset-0 z-30"
+          onClick={() => setFabOpen(false)}
+        />
       )}
 
-      {/* FAB */}
-      <button
-        onClick={() => isNoSubject ? navigate(newNoteUrl) : setFabOpen((o) => !o)}
-        className={`fixed bottom-28 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-float z-40 press transition-all duration-200 ${
-          !isNoSubject && fabOpen ? 'bg-surface border-2 border-border rotate-45' : 'bg-accent'
-        }`}
-      >
-        <svg
-          width="22" height="22" viewBox="0 0 24 24" fill="none"
-          stroke={!isNoSubject && fabOpen ? 'currentColor' : 'white'}
-          strokeWidth="2.5"
-          className={!isNoSubject && fabOpen ? 'text-text-secondary' : ''}
+      {/* FAB + pills — stacked column, anchored bottom-right */}
+      <div className="fixed bottom-28 right-5 flex flex-col items-end gap-3 z-40">
+
+        {/* Neuer Ordner pill — appears second (80 ms delay) */}
+        {!isNoSubject && (
+          <button
+            onClick={() => { setFabOpen(false); openNewFolder() }}
+            style={{ transitionDelay: fabOpen ? '80ms' : '0ms' }}
+            className={`flex items-center gap-2.5 bg-surface rounded-full pl-4 pr-5 py-3
+              shadow-float border border-border/60 whitespace-nowrap press
+              transition-all duration-300 ease-out
+              ${fabOpen
+                ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+                : 'opacity-0 translate-y-4 scale-90 pointer-events-none'
+              }`}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent shrink-0">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12 11v6M9 14h6" strokeLinecap="round" />
+            </svg>
+            <span className="text-text-primary font-semibold text-[14px]">Neuer Ordner</span>
+          </button>
+        )}
+
+        {/* Neue Notiz pill — appears first (40 ms delay) */}
+        <button
+          onClick={() => { setFabOpen(false); navigate(newNoteUrl) }}
+          style={{ transitionDelay: fabOpen ? '40ms' : '0ms' }}
+          className={`flex items-center gap-2.5 grad-accent rounded-full pl-4 pr-5 py-3
+            shadow-float whitespace-nowrap press
+            transition-all duration-300 ease-out
+            ${fabOpen
+              ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+              : 'opacity-0 translate-y-4 scale-90 pointer-events-none'
+            }`}
         >
-          <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-        </svg>
-      </button>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="shrink-0">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+          <span className="text-white font-semibold text-[14px]">Neue Notiz</span>
+        </button>
+
+        {/* The + bubble — shrinks to nothing when open */}
+        <button
+          onClick={() => isNoSubject ? navigate(newNoteUrl) : setFabOpen((o) => !o)}
+          className={`w-14 h-14 rounded-full grad-accent shadow-float
+            flex items-center justify-center press
+            transition-all duration-200 ease-in-out
+            ${fabOpen ? 'opacity-0 scale-50 pointer-events-none' : 'opacity-100 scale-100'}`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+        </button>
+
+      </div>
 
       {/* New folder modal */}
       <BottomSheet isOpen={showNewFolderModal} onClose={() => setShowNewFolderModal(false)}>

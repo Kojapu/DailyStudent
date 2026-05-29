@@ -18,7 +18,7 @@ export function ExamResultScreen() {
       {/* Header */}
       <div className="px-4 pt-14 pb-4">
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-8 h-8 rounded-btn bg-accent-soft flex items-center justify-center">
+          <div className="w-8 h-8 rounded-btn icon-accent flex items-center justify-center">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 8v4l3 3" strokeLinecap="round" />
@@ -51,7 +51,11 @@ export function ExamResultScreen() {
               className="h-full rounded-pill transition-all duration-700"
               style={{
                 width: `${percentage}%`,
-                backgroundColor: percentage >= 80 ? '#4ADE80' : percentage >= 60 ? '#FACC15' : '#F87171',
+                background: percentage >= 80
+                  ? 'linear-gradient(90deg,#4ADE80,#15803D)'
+                  : percentage >= 60
+                  ? 'linear-gradient(90deg,#FCD34D,#B45309)'
+                  : 'linear-gradient(90deg,#F87171,#B91C1C)',
               }}
             />
           </div>

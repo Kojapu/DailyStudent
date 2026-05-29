@@ -28,7 +28,7 @@ export function LearnModeScreen() {
             key={m}
             onClick={() => setMode(m)}
             className={`flex-1 py-2 rounded-btn text-sm font-medium capitalize transition-all duration-150 ${
-              mode === m ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'
+              mode === m ? 'grad-accent text-white' : 'text-text-secondary hover:text-text-primary'
             }`}
           >
             {m === 'karteikarten' ? 'Karteikarten' : 'Klausur'}
