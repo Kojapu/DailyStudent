@@ -36,11 +36,11 @@ export function ProfilScreen() {
     <div className="flex flex-col min-h-screen bg-background pb-28">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="px-5" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
+      <div className="px-4" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
         <h1 className="text-[28px] font-bold text-text-primary">Profil</h1>
       </div>
 
-      <div className="px-5 mt-5 space-y-5">
+      <div className="px-4 mt-5 space-y-5">
 
         {/* ── User card ──────────────────────────────────────────── */}
         <div className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4">

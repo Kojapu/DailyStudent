@@ -236,7 +236,7 @@ export function UnterrichtScreen() {
     <div className="flex flex-col min-h-screen bg-background pb-28">
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="px-5" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
+      <div className="px-4" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
         <h1 className="text-[28px] font-bold text-text-primary">Unterricht</h1>
         <p className="text-[13px] text-text-muted mt-0.5">
           {profile?.schulform ?? 'Gymnasium'}{profile?.bundesland ? ` · ${profile.bundesland}` : ''}
@@ -250,7 +250,7 @@ export function UnterrichtScreen() {
           <p className="text-text-muted text-[14px]">Gehe zu Profil → Onboarding zurücksetzen.</p>
         </div>
       ) : (
-        <div className="px-5 mt-5 space-y-3">
+        <div className="px-4 mt-5 space-y-3">
 
           {/* ── Schnellaktionen ──────────────────────────────────── */}
           <div className="flex gap-3">

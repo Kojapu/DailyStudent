@@ -1,104 +1,191 @@
-import { useState, useRef } from 'react'
-import { Button } from '../components/ui/Button'
-import { BottomSheet } from '../components/ui/BottomSheet'
-import { useUser, type EntryType } from '../context/UserContext'
-import { subjects } from '../data/mockData'
+import { useState, useRef, useEffect } from 'react'
+import { useUser, type EntryType, type PersonalEntry } from '../context/UserContext'
 import { SUBJECT_INFO } from '../data/subjectInfo'
-import type { StundenplanSlot } from '../types'
+import type { StundenplanSlot, Stundenplan } from '../types'
 import { parseStundenplanFromImage } from '../lib/groq'
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const DAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+const MONTHS_DE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez']
 
-const TYPE_CONFIG: Record<EntryType, { label: string; icon: string; color: string }> = {
-  lerneinheit: { label: 'Lerneinheit', icon: '📚', color: '#34C759' },
-  termin:      { label: 'Termin',      icon: '📅', color: '#007AFF' },
-  erinnerung:  { label: 'Erinnerung',  icon: '🔔', color: '#FF9500' },
+const TYPE_CONFIG: Record<EntryType, { label: string; icon: string; color: string; grad: string }> = {
+  lerneinheit: { label: 'Lernzeit',  icon: '📚', color: '#34C759', grad: 'linear-gradient(135deg,#34C759,#28a745)' },
+  termin:      { label: 'Termin',    icon: '📅', color: '#007AFF', grad: 'linear-gradient(135deg,#007AFF,#0055cc)' },
+  erinnerung:  { label: 'Sonstiges', icon: '🔔', color: '#FF9500', grad: 'linear-gradient(135deg,#FF9500,#e07b00)' },
 }
 
-function getWeekDays() {
-  const now = new Date()
-  const dow = now.getDay()
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1))
-  monday.setHours(0, 0, 0, 0)
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
-  })
+const PX_PER_HOUR = 56
+const START_H = 6
+const END_H = 22
+const TOTAL_H = END_H - START_H
+
+type RecurFreq = 'daily' | 'weekly' | 'monthly'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r
 }
 
-function daysUntil(dateStr: string) {
-  const exam = new Date(dateStr)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  exam.setHours(0, 0, 0, 0)
-  return Math.ceil((exam.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+function getWeekDays(ref: Date = new Date()): Date[] {
+  const dow = ref.getDay()
+  const mon = new Date(ref)
+  mon.setDate(ref.getDate() - (dow === 0 ? 6 : dow - 1))
+  mon.setHours(0, 0, 0, 0)
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d })
 }
 
-function toDateStr(d: Date) {
+function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function getGreeting(name: string) {
+function getGreeting(name: string): string {
   const h = new Date().getHours()
-  const greet = h < 12 ? 'Guten Morgen' : h < 17 ? 'Guten Tag' : 'Guten Abend'
-  return `${greet}, ${name}`
+  return `${h < 12 ? 'Guten Morgen' : h < 17 ? 'Guten Tag' : 'Guten Abend'}, ${name}`
 }
+
+function toPx(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return ((h * 60 + m - START_H * 60) / 60) * PX_PER_HOUR
+}
+
+function minToPx(minutes: number): number {
+  return ((minutes - START_H * 60) / 60) * PX_PER_HOUR
+}
+
+function durToPx(min: number): number { return (min / 60) * PX_PER_HOUR }
+
+function getDaysInMonth(y: number, m: number): number { return new Date(y, m + 1, 0).getDate() }
+
+function firstDayOffset(y: number, m: number): number {
+  const d = new Date(y, m, 1).getDay(); return d === 0 ? 6 : d - 1
+}
+
+function dayLabelIdx(d: Date): number { const dow = d.getDay(); return dow === 0 ? 6 : dow - 1 }
+
+function generateRecurring(
+  form: { title: string; type: EntryType; date: string; time: string },
+  freq: RecurFreq,
+  endDate: string,
+): PersonalEntry[] {
+  const result: PersonalEntry[] = []
+  const end = new Date(endDate + 'T00:00:00')
+  let cur = new Date(form.date + 'T00:00:00')
+  const base = Date.now()
+  while (cur <= end && result.length < 365) {
+    result.push({ id: `${base}-${result.length}`, title: form.title.trim(), type: form.type, date: toDateStr(cur), time: form.time })
+    if (freq === 'daily') cur = addDays(cur, 1)
+    else if (freq === 'weekly') cur = addDays(cur, 7)
+    else cur = new Date(cur.getFullYear(), cur.getMonth() + 1, cur.getDate())
+  }
+  return result
+}
+
+// ─── Premium icon helpers ─────────────────────────────────────────────────────
+
+function ChevronLeft({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+}
+function ChevronRight({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+}
+function CloseIcon({ size = 14 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" /></svg>
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function KalenderScreen() {
   const { profile, personalEntries, addEntry, removeEntry, updateProfile } = useUser()
-  const weekDays = getWeekDays()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+
+  const today = new Date(); today.setHours(0, 0, 0, 0)
   const todayStr = toDateStr(today)
 
-  // 0=Mo…4=Fr; null on weekends
-  const todayDow = today.getDay()
-  const schoolDayIndex: number | null = todayDow >= 1 && todayDow <= 5 ? todayDow - 1 : null
-  const todayStundenplanSlots = schoolDayIndex !== null
-    ? (profile?.stundenplan?.slots ?? [])
-        .filter((s) => s.day === schoolDayIndex)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    : []
+  // Calendar
+  const [calOpen, setCalOpen]   = useState(false)
+  const [calView, setCalView]   = useState<'twoday' | 'month' | 'year'>('twoday')
+  const [viewDate, setViewDate] = useState(new Date(today))
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [form, setForm] = useState<{ title: string; type: EntryType; date: string; time: string }>({
-    title: '',
-    type: 'lerneinheit',
-    date: todayStr,
-    time: '',
+  // Add-entry modal (FAB)
+  const [fabOpen,     setFabOpen]     = useState(false)
+  const [fabAnimated, setFabAnimated] = useState(false)
+  const [addForm, setAddForm] = useState<{ title: string; type: EntryType; date: string; time: string }>({
+    title: '', type: 'termin', date: todayStr, time: '',
   })
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [recurFreq,   setRecurFreq]   = useState<RecurFreq>('weekly')
+  const [recurEnd,    setRecurEnd]    = useState('')
 
-  const upcomingExams = (profile?.klausurtermine ?? [])
-    .map(({ subjectId, date }) => {
-      const subject = subjects.find((s) => s.id === subjectId)
-      return { subjectId, date, days: daysUntil(date), subject }
-    })
-    .filter((e) => e.days >= 0 && e.subject)
-    .sort((a, b) => a.days - b.days)
+  // Entry detail
+  const [selectedEntry, setSelectedEntry] = useState<PersonalEntry | null>(null)
+  const [detailAnimated, setDetailAnimated] = useState(false)
 
-  const todayEntries = personalEntries.filter((e) => e.date === todayStr)
-  const futureEntries = personalEntries
-    .filter((e) => e.date > todayStr)
-    .sort((a, b) => a.date.localeCompare(b.date))
+  // Stundenplan views
+  const [spViewOpen, setSpViewOpen] = useState(false)
+  const [spEditOpen, setSpEditOpen] = useState(false)
 
-  const openModal = (date = todayStr) => {
-    setForm({ title: '', type: 'lerneinheit', date, time: '' })
-    setModalOpen(true)
+  const hasStundenplan = (profile?.stundenplan?.slots?.length ?? 0) > 0
+
+  // ── FAB open/close ──────────────────────────────────────────
+  const openFab = (date = todayStr, time = '') => {
+    setAddForm({ title: '', type: 'termin', date, time })
+    setIsRecurring(false)
+    setRecurFreq('weekly')
+    setRecurEnd(toDateStr(addDays(new Date(), 90)))
+    setFabOpen(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setFabAnimated(true)))
+  }
+
+  const closeFab = () => {
+    setFabAnimated(false)
+    setTimeout(() => setFabOpen(false), 220)
   }
 
   const handleAdd = () => {
-    if (!form.title.trim()) return
-    addEntry({ id: Date.now().toString(), ...form, title: form.title.trim() })
-    setModalOpen(false)
+    if (!addForm.title.trim()) return
+    if (isRecurring && recurEnd) {
+      generateRecurring(addForm, recurFreq, recurEnd).forEach((e) => addEntry(e))
+    } else {
+      addEntry({ id: Date.now().toString(), ...addForm, title: addForm.title.trim() })
+    }
+    closeFab()
   }
 
+  // ── Entry detail open/close ──────────────────────────────────
+  const openDetail = (entry: PersonalEntry) => {
+    setSelectedEntry(entry)
+    requestAnimationFrame(() => requestAnimationFrame(() => setDetailAnimated(true)))
+  }
+
+  const closeDetail = () => {
+    setDetailAnimated(false)
+    setTimeout(() => setSelectedEntry(null), 200)
+  }
+
+  const goToToday = () => { setViewDate(new Date(today)); setCalView('twoday') }
+
+  // ── Pre-compute collapsed calendar data ──────────────────────
+  const calWeekDays = getWeekDays(today)
+  const calDow = today.getDay()
+  const calSpIdx = calDow >= 1 && calDow <= 5 ? calDow - 1 : -1
+  const calTodaySlots = calSpIdx >= 0
+    ? (profile?.stundenplan?.slots ?? []).filter((s) => s.day === calSpIdx).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    : []
+  type CPill = { time: string; label: string; color: string; icon: string }
+  const calPills: CPill[] = [
+    ...calTodaySlots.map((s) => ({ time: s.startTime, label: SUBJECT_INFO[s.subjectId]?.name ?? s.subjectId, color: SUBJECT_INFO[s.subjectId]?.color ?? '#6366F1', icon: SUBJECT_INFO[s.subjectId]?.icon ?? '📚' })),
+    ...personalEntries.filter((e) => e.date === todayStr).map((e) => ({ time: e.time || '', label: e.title, color: TYPE_CONFIG[e.type].color, icon: TYPE_CONFIG[e.type].icon })),
+    ...(profile?.klausurtermine ?? []).filter((k) => k.date === todayStr).map((k) => ({ time: '', label: `Klausur: ${SUBJECT_INFO[k.subjectId]?.name ?? k.subjectId}`, color: '#FF3B30', icon: '📝' })),
+  ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')).slice(0, 3)
+
+  // ── Render ──────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen bg-background pb-28">
 
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="px-5" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="px-4" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
         <div className="flex items-start justify-between">
           <div>
             <p className="text-[13px] text-text-muted">
@@ -108,249 +195,201 @@ export function KalenderScreen() {
               {getGreeting(profile?.name ?? 'Max')}
             </h1>
           </div>
-          <div className="flex items-center gap-2 mt-2">
-            <button
-              onClick={() => openModal()}
-              className="w-9 h-9 rounded-full bg-surface shadow-card border border-border/60 flex items-center justify-center press-sm"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-text-secondary">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-            </button>
-            <span className="text-[13px] px-3 py-1.5 rounded-pill bg-warning/10 text-warning font-semibold">🔥 12</span>
-          </div>
+          <span className="mt-2 text-[13px] px-3 py-1.5 rounded-pill bg-warning/10 text-warning font-semibold">🔥 12</span>
         </div>
       </div>
 
-      {/* ── Week strip ─────────────────────────────────────────── */}
-      <div className="px-5 mt-5 mb-1">
-        <div className="flex gap-1.5">
-          {weekDays.map((d, i) => {
-            const isToday = d.getTime() === today.getTime()
-            const dayStr = toDateStr(d)
-            const hasEntries = personalEntries.some((e) => e.date === dayStr)
-            return (
-              <button
-                key={i}
-                onClick={() => openModal(dayStr)}
-                className={`flex-1 flex flex-col items-center py-2.5 rounded-[14px] transition-all duration-200 press-sm relative ${
-                  isToday ? 'grad-accent' : 'hover:bg-surface'
-                }`}
-              >
-                <span className={`text-[10px] font-semibold tracking-wide ${isToday ? 'text-white/80' : 'text-text-muted'}`}>
-                  {DAY_LABELS[i]}
-                </span>
-                <span className={`text-[16px] font-bold mt-0.5 leading-none ${isToday ? 'text-white' : 'text-text-secondary'}`}>
-                  {d.getDate()}
-                </span>
-                {hasEntries && (
-                  <span
-                    className="absolute bottom-1.5 w-1 h-1 rounded-full"
-                    style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgb(var(--color-accent))' }}
-                  />
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      <div className="px-4 space-y-4 mt-5">
 
-      <div className="px-5 space-y-7 mt-5">
+        {/* ── Kalender Widget (inline accordion) ──────────────── */}
+        <div className="bg-surface border border-border/60 rounded-2xl shadow-card-adaptive overflow-hidden">
 
-        {/* ── SmartStundenplan ───────────────────────────────────── */}
-        {profile?.stundenplan && profile.stundenplan.slots.length > 0 ? (
-          <section>
-            <h2 className="section-label mb-3">Heute im Stundenplan</h2>
-            {schoolDayIndex === null ? (
-              <p className="text-text-muted text-sm">Heute kein Schultag.</p>
-            ) : todayStundenplanSlots.length === 0 ? (
-              <p className="text-text-muted text-sm">Keine Stunden für heute eingetragen.</p>
-            ) : (
-              <div
-                className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5"
-                style={{ scrollbarWidth: 'none' }}
-              >
-                {todayStundenplanSlots.map((slot) => {
-                  const subj = SUBJECT_INFO[slot.subjectId]
-                  return (
-                    <div
-                      key={slot.id}
-                      className="flex-shrink-0 bg-surface border border-border/60 rounded-card shadow-card-adaptive p-3.5 flex flex-col gap-1.5 w-[104px]"
-                    >
-                      <p className="text-text-muted text-[11px] font-medium tabular-nums">{slot.startTime}</p>
-                      <div
-                        className="w-8 h-8 rounded-btn flex items-center justify-center text-lg"
-                        style={{ backgroundColor: `${subj?.color ?? '#7C3AED'}22` }}
-                      >
-                        {subj?.icon ?? '📚'}
-                      </div>
-                      <p className="text-text-primary font-semibold text-[12px] leading-tight">{subj?.name ?? slot.subjectId}</p>
-                      {slot.room && <p className="text-text-muted text-[11px]">{slot.room}</p>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </section>
-        ) : (
-          <StundenplanSetupWidget
-            faecher={profile?.faecher ?? []}
-            onSave={(slots) =>
-              updateProfile({ stundenplan: { slots, createdAt: new Date().toISOString() } })
-            }
-          />
-        )}
-
-        {/* ── Heute ──────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="section-label">Heute</h2>
-            <button
-              onClick={() => openModal()}
-              className="flex items-center gap-1 text-[13px] text-accent font-medium press-sm"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-              </svg>
-              Hinzufügen
-            </button>
-          </div>
-          <div className="space-y-2.5">
-            {todayEntries.map((entry) => {
-              const cfg = TYPE_CONFIG[entry.type]
-              return (
-                <div
-                  key={entry.id}
-                  className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4 flex items-center gap-4 animate-fade-in"
-                >
-                  <div
-                    className="w-10 h-10 rounded-[12px] flex items-center justify-center text-lg shrink-0"
-                    style={{ background: `linear-gradient(145deg, ${cfg.color}35, ${cfg.color}10)` }}
-                  >
-                    {cfg.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-text-primary font-semibold text-[15px] truncate">{entry.title}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {entry.time && <p className="text-text-muted text-[12px]">{entry.time} Uhr</p>}
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded-pill font-semibold"
-                        style={{ backgroundColor: `${cfg.color}18`, color: cfg.color }}
-                      >
-                        {cfg.label}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeEntry(entry.id)}
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0 press-sm"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                      <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                </div>
-              )
-            })}
-
-            {todayEntries.length === 0 && (
-              <button
-                onClick={() => openModal()}
-                className="w-full border border-dashed border-border rounded-card py-5 flex items-center justify-center gap-2 text-text-muted hover:border-accent/50 hover:text-accent hover:bg-accent/5 transition-all duration-200 press-sm"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                </svg>
-                <span className="text-[13px] font-medium">Eintrag hinzufügen</span>
-              </button>
-            )}
-          </div>
-        </section>
-
-        {/* ── Geplant ────────────────────────────────────────────── */}
-        {futureEntries.length > 0 && (
-          <section>
-            <h2 className="section-label mb-3">Geplant</h2>
-            <div className="space-y-2.5">
-              {futureEntries.map((entry) => {
-                const cfg = TYPE_CONFIG[entry.type]
-                const d = new Date(entry.date + 'T00:00:00')
+          {/* Collapsed header — always visible */}
+          <button
+            onClick={() => setCalOpen((o) => !o)}
+            className="w-full px-4 pt-4 pb-3 text-left transition-colors hover:bg-surface-hover"
+          >
+            <p className="text-[13px] font-semibold text-text-muted mb-3">
+              {today.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+            {/* Week strip */}
+            <div className="flex gap-1 mb-3">
+              {calWeekDays.map((d, i) => {
+                const isToday = toDateStr(d) === todayStr
+                const dayStr = toDateStr(d)
+                const hasEntry = personalEntries.some((e) => e.date === dayStr) || (profile?.klausurtermine ?? []).some((k) => k.date === dayStr)
                 return (
-                  <div
-                    key={entry.id}
-                    className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4 flex items-center gap-4"
-                  >
-                    <div
-                      className="w-10 h-10 rounded-[12px] flex items-center justify-center text-lg shrink-0"
-                      style={{ background: `linear-gradient(145deg, ${cfg.color}35, ${cfg.color}10)` }}
-                    >
-                      {cfg.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-text-primary font-semibold text-[15px] truncate">{entry.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-text-muted text-[12px]">
-                          {d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: 'short' })}
-                          {entry.time ? `, ${entry.time} Uhr` : ''}
-                        </p>
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded-pill font-semibold"
-                          style={{ backgroundColor: `${cfg.color}18`, color: cfg.color }}
-                        >
-                          {cfg.label}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeEntry(entry.id)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-text-muted hover:text-danger hover:bg-danger/10 transition-colors shrink-0 press-sm"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-                      </svg>
-                    </button>
+                  <div key={i} className={`flex-1 flex flex-col items-center py-2 rounded-[12px] relative ${isToday ? 'grad-accent' : ''}`}>
+                    <span className={`text-[10px] font-semibold ${isToday ? 'text-white/80' : 'text-text-muted'}`}>{DAY_LABELS[i]}</span>
+                    <span className={`text-[14px] font-bold mt-0.5 leading-none ${isToday ? 'text-white' : 'text-text-secondary'}`}>{d.getDate()}</span>
+                    {hasEntry && <span className="absolute bottom-1 w-1 h-1 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgb(var(--color-accent))' }} />}
                   </div>
                 )
               })}
             </div>
-          </section>
-        )}
-
-        {/* ── Klausuren ──────────────────────────────────────────── */}
-        {upcomingExams.length > 0 && (
-          <section>
-            <h2 className="section-label mb-3">Nächste Klausuren</h2>
-            <div className="space-y-2.5">
-              {upcomingExams.slice(0, 3).map((exam) => (
-                <div
-                  key={exam.subjectId + exam.date}
-                  className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4 flex items-center gap-4"
-                >
-                  <div
-                    className="w-10 h-10 rounded-[12px] flex items-center justify-center text-lg shrink-0"
-                    style={{ backgroundColor: `${exam.subject!.color}18` }}
-                  >
-                    {exam.subject!.icon}
+            {/* Today's events */}
+            {calPills.length === 0 ? (
+              <p className="text-text-muted text-[12px] italic">Heute keine Einträge</p>
+            ) : (
+              <div className="space-y-1.5">
+                {calPills.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-sm shrink-0">{p.icon}</span>
+                    <span className="text-[13px] font-medium text-text-primary truncate flex-1">{p.label}</span>
+                    {p.time && <span className="text-[11px] text-text-muted shrink-0 tabular-nums">{p.time}</span>}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-text-primary font-semibold text-[15px]">{exam.subject!.name}</p>
-                    <p className="text-text-muted text-[12px] mt-0.5">
-                      {new Date(exam.date).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' })}
-                    </p>
-                  </div>
-                  <div
-                    className="px-3 py-1.5 rounded-pill text-[12px] font-bold shrink-0"
-                    style={{ backgroundColor: `${exam.subject!.color}15`, color: exam.subject!.color }}
-                  >
-                    {exam.days === 0 ? 'Heute' : exam.days === 1 ? 'Morgen' : `${exam.days} Tage`}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+            {/* Chevron */}
+            <div className="flex justify-end items-center gap-1 mt-2.5 text-text-muted">
+              <span className="text-[11px]">{calOpen ? 'Einklappen' : 'Aufklappen'}</span>
+              <svg
+                width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                className="transition-transform duration-300"
+                style={{ transform: calOpen ? 'rotate(180deg)' : 'none' }}
+              >
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-          </section>
+          </button>
+
+          {/* Expandable section — slides down in-place */}
+          <div
+            className="overflow-hidden"
+            style={{
+              maxHeight: calOpen ? '540px' : '0',
+              transition: 'max-height 0.38s cubic-bezier(0.4,0,0.2,1)',
+            }}
+          >
+            <div className="border-t border-border/30 flex flex-col" style={{ height: 540 }}>
+
+              {/* View toggle + collapse button */}
+              <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0">
+                <div className="flex items-center gap-0.5 bg-background rounded-[11px] p-[3px]">
+                  {(['twoday', 'month', 'year'] as const).map((view, i) => (
+                    <button
+                      key={view}
+                      onClick={() => setCalView(view)}
+                      className="px-4 py-1.5 rounded-[8px] text-[12px] font-bold transition-all duration-200 press-sm"
+                      style={calView === view ? {
+                        background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                        color: 'white',
+                        boxShadow: '0 2px 8px rgba(var(--color-accent),0.35)',
+                      } : { color: 'rgb(var(--color-text-muted))' }}
+                    >
+                      {['2T', 'M', 'J'][i]}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const now = new Date()
+                    const h = now.getMinutes() >= 30 ? Math.min(now.getHours() + 1, 23) : now.getHours()
+                    openFab(todayStr, `${String(h).padStart(2, '0')}:00`)
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-[11px] text-[12px] font-bold press-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #7C3AED, #9F5FFA, #7C3AED)',
+                    backgroundSize: '200% 200%',
+                    color: 'white',
+                    boxShadow: '0 0 16px 3px rgba(124,58,237,0.55), 0 3px 10px rgba(124,58,237,0.4)',
+                    border: '1px solid rgba(159,95,250,0.5)',
+                  }}
+                >
+                  + Eintrag
+                </button>
+              </div>
+
+              {/* Date strip (2T only) */}
+              {calView === 'twoday' && (
+                <DateStrip
+                  viewDate={viewDate}
+                  todayStr={todayStr}
+                  onDaySelect={(d) => setViewDate(d)}
+                  onPrevWeek={() => setViewDate((v) => addDays(v, -2))}
+                  onNextWeek={() => setViewDate((v) => addDays(v, 2))}
+                />
+              )}
+
+              {/* Calendar content */}
+              <div className="flex-1 overflow-hidden min-h-0">
+                {calView === 'twoday' && (
+                  <TwoDayView
+                    viewDate={viewDate} todayStr={todayStr}
+                    stundenplan={profile?.stundenplan}
+                    personalEntries={personalEntries}
+                    klausurtermine={profile?.klausurtermine ?? []}
+                    onSlotPress={(dateStr, time) => openFab(dateStr, time)}
+                    onEntryPress={openDetail}
+                  />
+                )}
+                {calView === 'month' && (
+                  <MonthView
+                    viewDate={viewDate} todayStr={todayStr}
+                    personalEntries={personalEntries}
+                    klausurtermine={profile?.klausurtermine ?? []}
+                    onNavigate={(off) => setViewDate((v) => new Date(v.getFullYear(), v.getMonth() + off, 1))}
+                    onDayPress={(d) => { setViewDate(d); setCalView('twoday') }}
+                  />
+                )}
+                {calView === 'year' && (
+                  <YearView
+                    viewDate={viewDate} todayStr={todayStr}
+                    personalEntries={personalEntries}
+                    klausurtermine={profile?.klausurtermine ?? []}
+                    onNavigate={(off) => setViewDate((v) => new Date(v.getFullYear() + off, v.getMonth(), 1))}
+                    onMonthPress={(d) => { setViewDate(d); setCalView('month') }}
+                  />
+                )}
+              </div>
+
+              {/* Bottom bar */}
+              <div className="px-4 py-2.5 border-t border-border/40 shrink-0 flex items-center justify-between">
+                <button
+                  onClick={goToToday}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-[11px] text-white text-[12px] font-bold press-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #7C3AED, #9F5FFA, #7C3AED)',
+                    backgroundSize: '200% 200%',
+                    boxShadow: '0 0 16px 3px rgba(124,58,237,0.55), 0 3px 10px rgba(124,58,237,0.4)',
+                    border: '1px solid rgba(159,95,250,0.5)',
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Heute
+                </button>
+                <span className="text-text-muted text-[10px]">Leere Stelle tippen → Eintrag</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Stundenplan Widget / Setup ───────────────────────── */}
+        {hasStundenplan ? (
+          <StundenplanMiniWidget
+            stundenplan={profile!.stundenplan!}
+            onOpen={() => setSpViewOpen(true)}
+          />
+        ) : (
+          <StundenplanSetupWidget
+            faecher={profile?.faecher ?? []}
+            onSave={(slots) => updateProfile({ stundenplan: { slots, createdAt: new Date().toISOString() } })}
+          />
         )}
 
-        {/* ── KI-Lernvorschlag — Pro teaser ─────────────────────── */}
+        {/* ── Lernplan Placeholder ─────────────────────────────── */}
+        <div className="bg-surface border border-border/60 rounded-2xl shadow-card-adaptive p-5 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-[14px] bg-accent/10 flex items-center justify-center text-xl shrink-0">📋</div>
+          <div className="flex-1">
+            <p className="text-text-primary font-semibold text-[15px]">Lernplan erstellen</p>
+            <p className="text-text-muted text-[12px] mt-0.5">Kommt bald</p>
+          </div>
+        </div>
+
+        {/* ── KI-Lernvorschlag ─────────────────────────────────── */}
         <section>
           <h2 className="section-label mb-3">KI-Lernvorschlag</h2>
           <div className="relative overflow-hidden bg-surface rounded-card shadow-card-adaptive border border-border/60 p-5">
@@ -376,79 +415,907 @@ export function KalenderScreen() {
 
       </div>
 
-      {/* ── Add Entry Modal ─────────────────────────────────────── */}
-      <BottomSheet isOpen={modalOpen} onClose={() => setModalOpen(false)}>
-        <div className="px-5 pb-2">
-          <h2 className="text-[20px] font-bold text-text-primary mb-5">Eintrag hinzufügen</h2>
+      {/* ══════════════════════════════════════════════════════════
+          FAB — always visible when modal is closed
+         ══════════════════════════════════════════════════════════ */}
+      {!fabOpen && (
+        <button
+          onClick={() => openFab()}
+          className="fixed bottom-[100px] right-5 w-14 h-14 rounded-full flex items-center justify-center z-[40] press-sm"
+          style={{
+            background: 'linear-gradient(145deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.75))',
+            boxShadow: '0 8px 24px rgba(var(--color-accent),0.45), 0 2px 8px rgba(0,0,0,0.2)',
+          }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
 
-          <div className="flex gap-2 mb-4">
-            {(Object.entries(TYPE_CONFIG) as [EntryType, typeof TYPE_CONFIG['lerneinheit']][]).map(([type, cfg]) => (
-              <button
-                key={type}
-                onClick={() => setForm((f) => ({ ...f, type }))}
-                className={`flex-1 py-2.5 rounded-btn text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition-all duration-150 press-sm ${
-                  form.type === type
-                    ? 'text-white border-transparent shadow-sm'
-                    : 'border-border text-text-secondary hover:bg-surface-hover'
-                }`}
-                style={form.type === type ? { backgroundColor: cfg.color } : undefined}
-              >
-                {cfg.icon} {cfg.label}
+      {/* ══════════════════════════════════════════════════════════
+          FAB Modal — pops from button, top-anchored for keyboard stability
+         ══════════════════════════════════════════════════════════ */}
+      {fabOpen && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-[44] bg-black/35" onClick={closeFab} />
+
+          {/* Modal card — top-anchored so keyboard doesn't push it */}
+          <div
+            className="fixed z-[45] bg-surface rounded-2xl shadow-float overflow-hidden"
+            style={{
+              top: 'max(60px, calc(env(safe-area-inset-top, 0px) + 52px))',
+              left: 16,
+              right: 16,
+              maxHeight: 'calc(100vh - 180px)',
+              overflowY: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              transformOrigin: 'bottom right',
+              transform: fabAnimated ? 'scale(1)' : 'scale(0.12)',
+              opacity: fabAnimated ? 1 : 0,
+              transition: 'transform 0.28s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease',
+            }}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/40">
+              <h2 className="text-[17px] font-bold text-text-primary">Eintrag hinzufügen</h2>
+              <button onClick={closeFab} className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center text-text-muted press-sm">
+                <CloseIcon />
               </button>
-            ))}
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+
+              {/* ── Type selector (premium) */}
+              <div className="flex gap-2">
+                {(Object.entries(TYPE_CONFIG) as [EntryType, typeof TYPE_CONFIG[EntryType]][]).map(([type, cfg]) => {
+                  const active = addForm.type === type
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setAddForm((f) => ({ ...f, type }))}
+                      className="flex-1 py-2.5 rounded-[12px] text-[11px] font-bold flex items-center justify-center gap-1 border transition-all duration-200 press-sm"
+                      style={active ? {
+                        background: cfg.grad,
+                        borderColor: 'transparent',
+                        color: 'white',
+                        boxShadow: `0 4px 12px ${cfg.color}50`,
+                      } : { borderColor: 'rgba(var(--color-border),0.6)', color: 'rgb(var(--color-text-secondary))' }}
+                    >
+                      {cfg.icon} {cfg.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* ── Title */}
+              <input
+                type="text"
+                value={addForm.title}
+                onChange={(e) => setAddForm((f) => ({ ...f, title: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                placeholder={
+                  addForm.type === 'lerneinheit' ? 'z.B. Geschichte Karteikarten' :
+                  addForm.type === 'termin' ? 'z.B. Nachhilfe bei Frau Müller' : 'z.B. Lernplan aktualisieren'
+                }
+                className="w-full bg-background border border-border rounded-[12px] px-4 py-3 text-[14px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+              />
+
+              {/* ── Date + Time */}
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={addForm.date}
+                  onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+                  className="flex-1 bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                />
+                <input
+                  type="time"
+                  value={addForm.time}
+                  onChange={(e) => setAddForm((f) => ({ ...f, time: e.target.value }))}
+                  className="w-[108px] bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                />
+              </div>
+
+              {/* ── Recurring toggle */}
+              <div>
+                <div className="flex gap-2 mb-3 p-1 bg-background rounded-[12px]">
+                  {([false, true] as const).map((val) => {
+                    const active = isRecurring === val
+                    return (
+                      <button
+                        key={String(val)}
+                        onClick={() => setIsRecurring(val)}
+                        className="flex-1 py-2.5 rounded-[9px] text-[12px] font-bold transition-all duration-200 press-sm"
+                        style={active ? {
+                          background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.78))',
+                          color: 'white',
+                          boxShadow: '0 3px 10px rgba(var(--color-accent),0.38)',
+                        } : {
+                          color: 'rgb(var(--color-text-muted))',
+                          background: 'transparent',
+                        }}
+                      >
+                        {val ? '🔁 Wiederkehrend' : '📌 Einmalig'}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Recurring options */}
+                {isRecurring && (
+                  <div className="space-y-2.5 bg-background rounded-[12px] p-3 border border-border/40">
+                    <div>
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Häufigkeit</p>
+                      <div className="flex gap-1.5 p-0.5 bg-surface rounded-[10px]">
+                        {(['daily', 'weekly', 'monthly'] as RecurFreq[]).map((f) => {
+                          const label = f === 'daily' ? 'Täglich' : f === 'weekly' ? 'Wöchentlich' : 'Monatlich'
+                          const active = recurFreq === f
+                          return (
+                            <button
+                              key={f}
+                              onClick={() => setRecurFreq(f)}
+                              className="flex-1 py-1.5 rounded-[8px] text-[11px] font-bold transition-all press-sm"
+                              style={active ? {
+                                background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.78))',
+                                color: 'white',
+                                boxShadow: '0 2px 6px rgba(var(--color-accent),0.35)',
+                              } : { color: 'rgb(var(--color-text-muted))', background: 'transparent' }}
+                            >
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Bis</p>
+                      <input
+                        type="date"
+                        value={recurEnd}
+                        onChange={(e) => setRecurEnd(e.target.value)}
+                        className="w-full bg-surface border border-border rounded-[10px] px-3 py-2 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Submit */}
+              <button
+                onClick={handleAdd}
+                disabled={!addForm.title.trim()}
+                className="w-full py-3 rounded-[14px] text-white text-[15px] font-bold press-sm disabled:opacity-40 transition-all"
+                style={{
+                  background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                  boxShadow: addForm.title.trim() ? '0 4px 16px rgba(var(--color-accent),0.4)' : 'none',
+                }}
+              >
+                {isRecurring ? 'Wiederkehrend speichern' : 'Hinzufügen'}
+              </button>
+            </div>
           </div>
 
-          <input
-            type="text"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder={
-              form.type === 'lerneinheit' ? 'z.B. Geschichte Karteikarten' :
-              form.type === 'termin' ? 'z.B. Nachhilfe bei Frau Müller' :
-              'z.B. Lernplan aktualisieren'
-            }
-            className="w-full bg-background border border-border rounded-card px-4 py-3 text-text-primary placeholder-text-muted mb-3 focus:outline-none focus:border-accent transition-colors"
-          />
+          {/* FAB becomes X while modal is open */}
+          <button
+            onClick={closeFab}
+            className="fixed bottom-[100px] right-5 w-14 h-14 rounded-full flex items-center justify-center z-[46] press-sm"
+            style={{
+              background: 'linear-gradient(145deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.75))',
+              boxShadow: '0 8px 24px rgba(var(--color-accent),0.45), 0 2px 8px rgba(0,0,0,0.2)',
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+            </svg>
+          </button>
+        </>
+      )}
 
-          <div className="flex gap-3 mb-5">
-            <input
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-              className="flex-1 bg-background border border-border rounded-card px-4 py-3 text-text-primary focus:outline-none focus:border-accent transition-colors"
-            />
-            <input
-              type="time"
-              value={form.time}
-              onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
-              className="w-32 bg-background border border-border rounded-card px-4 py-3 text-text-primary focus:outline-none focus:border-accent transition-colors"
+      {/* ══════════════════════════════════════════════════════════
+          Entry Detail Modal — fixed overlay, no layout shift
+         ══════════════════════════════════════════════════════════ */}
+      {selectedEntry && (
+        <>
+          <div className="fixed inset-0 z-[50] bg-black/40" onClick={closeDetail} />
+          <div
+            className="fixed inset-x-4 z-[51] bg-surface rounded-2xl shadow-float overflow-hidden"
+            style={{
+              top: '22%',
+              transformOrigin: 'center center',
+              transform: detailAnimated ? 'scale(1)' : 'scale(0.85)',
+              opacity: detailAnimated ? 1 : 0,
+              transition: 'transform 0.2s cubic-bezier(0.34,1.2,0.64,1), opacity 0.18s ease',
+            }}
+          >
+            {/* Header */}
+            <div
+              className="px-5 py-4 flex items-center gap-3"
+              style={{ background: `linear-gradient(135deg, ${TYPE_CONFIG[selectedEntry.type].color}20, ${TYPE_CONFIG[selectedEntry.type].color}08)` }}
+            >
+              <div
+                className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl shrink-0"
+                style={{ background: `linear-gradient(135deg, ${TYPE_CONFIG[selectedEntry.type].color}35, ${TYPE_CONFIG[selectedEntry.type].color}15)` }}
+              >
+                {TYPE_CONFIG[selectedEntry.type].icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-text-primary font-bold text-[17px] leading-tight truncate">{selectedEntry.title}</p>
+                <p className="text-text-muted text-[12px] mt-0.5">
+                  {new Date(selectedEntry.date + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+              <button onClick={closeDetail} className="w-8 h-8 rounded-full bg-surface-hover flex items-center justify-center text-text-muted press-sm shrink-0">
+                <CloseIcon />
+              </button>
+            </div>
+
+            {/* Details */}
+            <div className="px-5 py-4 space-y-3">
+              {selectedEntry.time && (
+                <div className="flex items-center gap-3 bg-background rounded-[12px] px-4 py-3">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
+                    <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="text-text-primary font-semibold text-[14px]">{selectedEntry.time} Uhr</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3 bg-background rounded-[12px] px-4 py-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
+                  <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
+                </svg>
+                <span
+                  className="text-[12px] font-semibold px-2 py-0.5 rounded-pill"
+                  style={{ backgroundColor: `${TYPE_CONFIG[selectedEntry.type].color}18`, color: TYPE_CONFIG[selectedEntry.type].color }}
+                >
+                  {TYPE_CONFIG[selectedEntry.type].label}
+                </span>
+              </div>
+
+              {/* Delete */}
+              <button
+                onClick={() => { removeEntry(selectedEntry.id); closeDetail() }}
+                className="w-full py-3 rounded-[12px] border text-[14px] font-bold transition-all press-sm mt-1"
+                style={{
+                  borderColor: 'rgba(var(--color-danger), 0.3)',
+                  color: 'rgb(var(--color-danger))',
+                  background: 'rgba(var(--color-danger), 0.05)',
+                }}
+              >
+                Eintrag löschen
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          Stundenplan Full View Overlay
+         ══════════════════════════════════════════════════════════ */}
+      {spViewOpen && (
+        <StundenplanFullView
+          stundenplan={profile!.stundenplan!}
+          onClose={() => setSpViewOpen(false)}
+          onEdit={() => setSpEditOpen(true)}
+        />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════
+          Stundenplan Edit Overlay (full screen)
+         ══════════════════════════════════════════════════════════ */}
+      {spEditOpen && (
+        <div className="fixed inset-0 z-[62] bg-background flex flex-col">
+          {/* Edit header */}
+          <div
+            className="flex items-center gap-3 px-5 border-b border-border/40 shrink-0"
+            style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))', paddingBottom: 14 }}
+          >
+            <button
+              onClick={() => setSpEditOpen(false)}
+              className="w-9 h-9 rounded-full bg-surface-hover flex items-center justify-center text-text-muted press-sm shrink-0"
+            >
+              <CloseIcon />
+            </button>
+            <h1 className="text-[18px] font-bold text-text-primary flex-1">Stundenplan bearbeiten</h1>
+          </div>
+          {/* Reuse setup widget in edit mode */}
+          <div className="flex-1 overflow-y-auto px-5 pt-4 pb-10">
+            <StundenplanSetupWidget
+              faecher={profile?.faecher ?? []}
+              initialSlots={profile?.stundenplan?.slots}
+              onSave={(slots) => {
+                updateProfile({ stundenplan: { slots, createdAt: new Date().toISOString() } })
+                setSpEditOpen(false)
+              }}
             />
           </div>
-
-          <Button variant="primary" fullWidth onClick={handleAdd} disabled={!form.title.trim()}>
-            Hinzufügen
-          </Button>
         </div>
-      </BottomSheet>
+      )}
     </div>
   )
 }
 
-/* ─── SmartStundenplan Setup Widget ──────────────────────── */
+// ─── Calendar Collapsed ───────────────────────────────────────────────────────
+
+interface CollapsedProps {
+  today: Date; todayStr: string; stundenplan: Stundenplan | undefined
+  personalEntries: PersonalEntry[]; klausurtermine: { subjectId: string; date: string }[]
+  onExpand: () => void
+}
+
+function CalendarCollapsed({ today, todayStr, stundenplan, personalEntries, klausurtermine, onExpand }: CollapsedProps) {
+  const weekDays = getWeekDays(today)
+  const dow = today.getDay()
+  const spIdx = dow >= 1 && dow <= 5 ? dow - 1 : -1
+  const todaySpSlots = spIdx >= 0
+    ? (stundenplan?.slots ?? []).filter((s) => s.day === spIdx).sort((a, b) => a.startTime.localeCompare(b.startTime))
+    : []
+  const todayPersonal = personalEntries.filter((e) => e.date === todayStr).sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+  const todayKlausur = klausurtermine.filter((k) => k.date === todayStr)
+
+  type Pill = { time: string; label: string; color: string; icon: string }
+  const pills: Pill[] = [
+    ...todaySpSlots.map((s) => ({ time: s.startTime, label: SUBJECT_INFO[s.subjectId]?.name ?? s.subjectId, color: SUBJECT_INFO[s.subjectId]?.color ?? '#6366F1', icon: SUBJECT_INFO[s.subjectId]?.icon ?? '📚' })),
+    ...todayPersonal.map((e) => ({ time: e.time || '', label: e.title, color: TYPE_CONFIG[e.type].color, icon: TYPE_CONFIG[e.type].icon })),
+    ...todayKlausur.map((k) => ({ time: '', label: `Klausur: ${SUBJECT_INFO[k.subjectId]?.name ?? k.subjectId}`, color: '#FF3B30', icon: '📝' })),
+  ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99')).slice(0, 3)
+
+  return (
+    <button
+      onClick={onExpand}
+      className="w-full bg-surface border border-border/60 rounded-2xl shadow-card-adaptive p-4 text-left hover:bg-surface-hover active:scale-[0.99] transition-all duration-200"
+    >
+      <p className="text-[13px] font-semibold text-text-muted mb-3">
+        {today.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+      </p>
+      <div className="flex gap-1 mb-3">
+        {weekDays.map((d, i) => {
+          const isToday = toDateStr(d) === todayStr
+          const hasEntry = personalEntries.some((e) => e.date === toDateStr(d)) || klausurtermine.some((k) => k.date === toDateStr(d))
+          return (
+            <div key={i} className={`flex-1 flex flex-col items-center py-2 rounded-[12px] relative ${isToday ? 'grad-accent' : ''}`}>
+              <span className={`text-[10px] font-semibold ${isToday ? 'text-white/80' : 'text-text-muted'}`}>{DAY_LABELS[i]}</span>
+              <span className={`text-[14px] font-bold mt-0.5 leading-none ${isToday ? 'text-white' : 'text-text-secondary'}`}>{d.getDate()}</span>
+              {hasEntry && <span className="absolute bottom-1 w-1 h-1 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgb(var(--color-accent))' }} />}
+            </div>
+          )
+        })}
+      </div>
+      {pills.length === 0 ? (
+        <p className="text-text-muted text-[12px] italic">Heute keine Einträge</p>
+      ) : (
+        <div className="space-y-1.5">
+          {pills.map((p, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-sm shrink-0">{p.icon}</span>
+              <span className="text-[13px] font-medium text-text-primary truncate flex-1">{p.label}</span>
+              {p.time && <span className="text-[11px] text-text-muted shrink-0 tabular-nums">{p.time}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex justify-end items-center gap-1 mt-2.5 text-text-muted">
+        <span className="text-[11px]">Aufklappen</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </div>
+    </button>
+  )
+}
+
+// ─── Date Strip ───────────────────────────────────────────────────────────────
+
+interface DateStripProps {
+  viewDate: Date; todayStr: string
+  onDaySelect: (d: Date) => void; onPrevWeek: () => void; onNextWeek: () => void
+}
+
+function DateStrip({ viewDate, todayStr, onDaySelect, onPrevWeek, onNextWeek }: DateStripProps) {
+  const weekDays = getWeekDays(viewDate)
+  const viewStartStr = toDateStr(viewDate)
+  const viewEndStr   = toDateStr(addDays(viewDate, 1))
+
+  return (
+    <div className="flex items-center px-2 py-2 border-b border-border/30 shrink-0 gap-1">
+      <button onClick={onPrevWeek} className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary hover:bg-surface press-sm shrink-0">
+        <ChevronLeft />
+      </button>
+      <div className="flex flex-1 justify-between">
+        {weekDays.map((d, i) => {
+          const dateStr = toDateStr(d)
+          const isToday    = dateStr === todayStr
+          const isSelected = dateStr === viewStartStr || dateStr === viewEndStr
+          return (
+            <button key={i} onClick={() => onDaySelect(d)} className="flex flex-col items-center gap-0.5 press-sm">
+              <span className="text-[9px] font-bold text-text-muted">{DAY_LABELS[i]}</span>
+              <span
+                className="w-7 h-7 flex items-center justify-center rounded-full text-[13px] font-bold transition-all"
+                style={isToday ? {
+                  background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                  color: 'white',
+                  boxShadow: '0 2px 8px rgba(var(--color-accent),0.4)',
+                } : isSelected ? {
+                  border: '2px solid rgb(var(--color-accent))',
+                  color: 'rgb(var(--color-accent))',
+                } : { color: 'rgb(var(--color-text-secondary))' }}
+              >
+                {d.getDate()}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <button onClick={onNextWeek} className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary hover:bg-surface press-sm shrink-0">
+        <ChevronRight />
+      </button>
+    </div>
+  )
+}
+
+// ─── Two-Day View ─────────────────────────────────────────────────────────────
+
+interface TwoDayProps {
+  viewDate: Date; todayStr: string; stundenplan: Stundenplan | undefined
+  personalEntries: PersonalEntry[]; klausurtermine: { subjectId: string; date: string }[]
+  onSlotPress: (dateStr: string, time: string) => void
+  onEntryPress: (entry: PersonalEntry) => void
+}
+
+function TwoDayView({ viewDate, todayStr, stundenplan, personalEntries, klausurtermine, onSlotPress, onEntryPress }: TwoDayProps) {
+  const days = [viewDate, addDays(viewDate, 1)]
+  const gridHeight = TOTAL_H * PX_PER_HOUR
+  const hours = Array.from({ length: TOTAL_H }, (_, i) => START_H + i)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      const now = new Date()
+      const h = now.getHours()
+      const target = h >= START_H && h < END_H ? Math.max(0, minToPx(h * 60) - 60) : minToPx(8 * 60)
+      scrollRef.current.scrollTop = target
+    }
+  }, [])
+
+  const handleColumnClick = (e: React.MouseEvent<HTMLDivElement>, dateStr: string) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const totalMin = (y / PX_PER_HOUR) * 60 + START_H * 60
+    const h = Math.max(START_H, Math.min(END_H - 1, Math.floor(totalMin / 60)))
+    const m = Math.round((totalMin % 60) / 15) * 15
+    onSlotPress(dateStr, `${String(h).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`)
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Column headers */}
+      <div className="flex shrink-0 border-b border-border/20" style={{ paddingLeft: 40 }}>
+        {days.map((d, i) => {
+          const isToday = toDateStr(d) === todayStr
+          return (
+            <div key={i} className={`flex-1 text-center py-2 border-l border-border/20`}>
+              <span className={`text-[11px] font-bold ${isToday ? 'text-accent' : 'text-text-secondary'}`}>
+                {DAY_LABELS[dayLabelIdx(d)]} – {d.getDate()}. {MONTHS_SHORT[d.getMonth()]}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Scrollable grid */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="flex" style={{ minHeight: gridHeight }}>
+          {/* Time axis */}
+          <div className="shrink-0 relative" style={{ width: 40, height: gridHeight }}>
+            {hours.map((h) => (
+              <div key={h} className="absolute right-2 flex items-center" style={{ top: minToPx(h * 60) - 7 }}>
+                <span className="text-[8px] text-text-muted/50 tabular-nums leading-none">{h}:00</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {days.map((d, colIdx) => {
+            const dateStr = toDateStr(d)
+            const isToday = dateStr === todayStr
+            const dow = d.getDay()
+            const spIdx = dow >= 1 && dow <= 5 ? dow - 1 : -1
+            const spSlots    = spIdx >= 0 ? (stundenplan?.slots ?? []).filter((s) => s.day === spIdx) : []
+            const dayEntries = personalEntries.filter((e) => e.date === dateStr && e.time)
+            const dayKlausur = klausurtermine.filter((k) => k.date === dateStr)
+
+            return (
+              <div
+                key={colIdx}
+                className={`flex-1 relative border-l border-border/20 cursor-pointer${isToday ? ' bg-accent/[0.03]' : ''}`}
+                style={{ height: gridHeight }}
+                onClick={(e) => handleColumnClick(e, dateStr)}
+              >
+                {/* Hour lines */}
+                {hours.map((h) => <div key={h} className="absolute left-0 right-0 border-t border-border/[0.15]" style={{ top: minToPx(h * 60) }} />)}
+
+                {/* Klausur banner */}
+                {dayKlausur.map((k) => {
+                  const subj = SUBJECT_INFO[k.subjectId]
+                  return (
+                    <div key={k.subjectId} className="absolute left-0.5 right-0.5 rounded-[5px] flex items-center px-1.5 overflow-hidden" style={{ top: 3, height: 15, backgroundColor: '#FF3B3018', borderLeft: '2px solid #FF3B30' }} onClick={(e) => e.stopPropagation()}>
+                      <span className="text-[7px] font-bold truncate" style={{ color: '#FF3B30' }}>📝 {subj?.name?.slice(0, 6) ?? 'Klausur'}</span>
+                    </div>
+                  )
+                })}
+
+                {/* Stundenplan blocks */}
+                {spSlots.map((slot) => {
+                  const subj = SUBJECT_INFO[slot.subjectId]
+                  const topPx = toPx(slot.startTime)
+                  const startMin = slot.startTime.split(':').map(Number).reduce((h, m) => h * 60 + m)
+                  const endMin   = slot.endTime.split(':').map(Number).reduce((h, m) => h * 60 + m)
+                  const heightPx = Math.max(durToPx(endMin - startMin), 22)
+                  const color = subj?.color ?? '#6366F1'
+                  return (
+                    <div key={slot.id} className="absolute left-0.5 right-0.5 rounded-[7px] flex flex-col justify-center px-2 overflow-hidden" style={{ top: topPx, height: heightPx, background: `linear-gradient(135deg, ${color}28, ${color}15)`, borderLeft: `2.5px solid ${color}90` }} onClick={(e) => e.stopPropagation()}>
+                      <span className="text-[9px] font-bold leading-tight truncate" style={{ color }}>{subj?.icon ?? ''} {subj?.name ?? slot.subjectId}</span>
+                      {slot.room && <span className="text-[7px] truncate" style={{ color, opacity: 0.7 }}>{slot.room}</span>}
+                    </div>
+                  )
+                })}
+
+                {/* Personal entries */}
+                {dayEntries.map((entry) => {
+                  const cfg = TYPE_CONFIG[entry.type]
+                  return (
+                    <div key={entry.id} className="absolute left-0.5 right-0.5 rounded-[7px] flex items-center px-2 overflow-hidden cursor-pointer press-sm" style={{ top: toPx(entry.time), height: 28, background: `linear-gradient(135deg, ${cfg.color}40, ${cfg.color}25)`, borderLeft: `2.5px solid ${cfg.color}` }} onClick={(e) => { e.stopPropagation(); onEntryPress(entry) }}>
+                      <span className="text-[9px] font-bold truncate" style={{ color: cfg.color }}>{cfg.icon} {entry.title}</span>
+                    </div>
+                  )
+                })}
+
+                {/* Current time line */}
+                {isToday && (() => {
+                  const now = new Date()
+                  const nowMin = now.getHours() * 60 + now.getMinutes()
+                  if (nowMin < START_H * 60 || nowMin > END_H * 60) return null
+                  return (
+                    <div className="absolute left-0 right-0 flex items-center pointer-events-none" style={{ top: minToPx(nowMin) }}>
+                      <div className="w-2 h-2 rounded-full -ml-1 shrink-0" style={{ background: 'rgb(var(--color-accent))' }} />
+                      <div className="flex-1 h-[1.5px]" style={{ background: 'rgb(var(--color-accent))', opacity: 0.85 }} />
+                    </div>
+                  )
+                })()}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Month View ───────────────────────────────────────────────────────────────
+
+interface MonthViewProps {
+  viewDate: Date; todayStr: string
+  personalEntries: PersonalEntry[]; klausurtermine: { subjectId: string; date: string }[]
+  onNavigate: (off: number) => void; onDayPress: (d: Date) => void
+}
+
+function MonthView({ viewDate, todayStr, personalEntries, klausurtermine, onNavigate, onDayPress }: MonthViewProps) {
+  const year = viewDate.getFullYear(), month = viewDate.getMonth()
+  const daysInMonth = getDaysInMonth(year, month)
+  const offset = firstDayOffset(year, month)
+  const todayDate = new Date(todayStr + 'T00:00:00')
+
+  const cells: (number | null)[] = [
+    ...Array.from({ length: offset }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 shrink-0">
+        <div>
+          <span className="text-[22px] font-bold text-text-primary">{MONTHS_DE[month]}</span>
+          <span className="text-[18px] font-semibold text-text-muted ml-2">{year}</span>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={() => onNavigate(-1)} className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary press-sm"><ChevronLeft /></button>
+          <button onClick={() => onNavigate(1)}  className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary press-sm"><ChevronRight /></button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 px-2 shrink-0 border-b border-border/20 pb-1.5">
+        {['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((d) => (
+          <div key={d} className="text-center text-[10px] font-bold text-text-muted/60">{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 px-2 overflow-y-auto flex-1 py-1">
+        {cells.map((day, idx) => {
+          if (!day) return <div key={idx} />
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const cellDate = new Date(year, month, day)
+          const isToday = dateStr === todayStr
+          const isPast  = cellDate < todayDate
+          const events  = [
+            ...personalEntries.filter((e) => e.date === dateStr).map((e) => ({ color: TYPE_CONFIG[e.type].color })),
+            ...klausurtermine.filter((k) => k.date === dateStr).map(() => ({ color: '#FF3B30' })),
+          ]
+          return (
+            <button key={idx} onClick={() => onDayPress(cellDate)} className="flex flex-col items-center py-1 press-sm">
+              <span
+                className="w-7 h-7 flex items-center justify-center rounded-full text-[13px] font-semibold transition-all"
+                style={isToday ? {
+                  background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                  color: 'white',
+                  boxShadow: '0 2px 6px rgba(var(--color-accent),0.4)',
+                } : isPast ? { color: 'rgb(var(--color-text-muted) / 0.4)' } : { color: 'rgb(var(--color-text-primary))' }}
+              >
+                {day}
+              </span>
+              {events.length > 0 && (
+                <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
+                  {events.slice(0, 3).map((ev, ei) => (
+                    <span key={ei} className="w-1 h-1 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.8)' : ev.color }} />
+                  ))}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Year View ────────────────────────────────────────────────────────────────
+
+interface YearViewProps {
+  viewDate: Date; todayStr: string
+  personalEntries: PersonalEntry[]; klausurtermine: { subjectId: string; date: string }[]
+  onNavigate: (off: number) => void; onMonthPress: (d: Date) => void
+}
+
+function YearView({ viewDate, todayStr, personalEntries, klausurtermine, onNavigate, onMonthPress }: YearViewProps) {
+  const year = viewDate.getFullYear()
+  const todayD = new Date(todayStr + 'T00:00:00')
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="flex items-center justify-between px-4 py-2.5 shrink-0 sticky top-0 bg-surface z-10 border-b border-border/20">
+        <button onClick={() => onNavigate(-1)} className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary press-sm"><ChevronLeft /></button>
+        <span className="text-[16px] font-bold text-text-primary">{year}</span>
+        <button onClick={() => onNavigate(1)}  className="w-9 h-9 flex items-center justify-center rounded-full bg-surface-hover border border-border/30 shadow-sm text-text-secondary press-sm"><ChevronRight /></button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 px-3 py-2">
+        {Array.from({ length: 12 }, (_, m) => {
+          const days = getDaysInMonth(year, m)
+          const off  = firstDayOffset(year, m)
+          const isCurrent = year === todayD.getFullYear() && m === todayD.getMonth()
+          const cells: (number | null)[] = [
+            ...Array.from({ length: off }, () => null),
+            ...Array.from({ length: days }, (_, i) => i + 1),
+          ]
+          while (cells.length % 7 !== 0) cells.push(null)
+
+          return (
+            <button key={m} onClick={() => onMonthPress(new Date(year, m, 1))} className="bg-background rounded-xl p-2 border text-left press-sm" style={{ borderColor: isCurrent ? 'rgba(var(--color-accent),0.6)' : 'rgba(var(--color-border),0.3)', boxShadow: isCurrent ? '0 0 0 1px rgba(var(--color-accent),0.2)' : 'none' }}>
+              <p className="text-[9px] font-bold mb-1 text-center" style={{ color: isCurrent ? 'rgb(var(--color-accent))' : 'rgb(var(--color-text-secondary))' }}>{MONTHS_SHORT[m]}</p>
+              <div className="grid grid-cols-7 gap-y-px">
+                {['M','D','M','D','F','S','S'].map((l, i) => <div key={i} className="text-center text-[4px] text-text-muted/30">{l}</div>)}
+                {cells.map((day, idx) => {
+                  if (!day) return <div key={idx} className="aspect-square" />
+                  const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  const isToday = dateStr === todayStr
+                  const hasEvt  = personalEntries.some((e) => e.date === dateStr) || klausurtermine.some((k) => k.date === dateStr)
+                  return (
+                    <div key={idx} className="flex items-center justify-center aspect-square rounded-[2px]" style={{ background: isToday ? 'rgb(var(--color-accent))' : hasEvt ? 'rgba(var(--color-accent),0.2)' : 'transparent' }}>
+                      <span className="text-[5px] font-medium leading-none" style={{ color: isToday ? 'white' : hasEvt ? 'rgb(var(--color-accent))' : 'rgb(var(--color-text-muted) / 0.5)' }}>{day}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Stundenplan Mini Widget ──────────────────────────────────────────────────
+
+const SP_DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr'] as const
+
+function StundenplanMiniWidget({ stundenplan, onOpen }: { stundenplan: Stundenplan; onOpen: () => void }) {
+  // Find max slots across any day for preview height
+  const byDay = SP_DAYS.map((_, i) =>
+    stundenplan.slots.filter((s) => s.day === i).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  )
+  const maxRows = Math.min(Math.max(...byDay.map((d) => d.length), 1), 5)
+
+  return (
+    <button
+      onClick={onOpen}
+      className="w-full bg-surface border border-border/60 rounded-2xl shadow-card-adaptive overflow-hidden press-sm active:scale-[0.99] transition-all duration-200"
+    >
+      {/* Widget header */}
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded-[8px] flex items-center justify-center text-sm"
+            style={{ background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.75))' }}
+          >
+            <span className="text-white text-xs">📅</span>
+          </div>
+          <span className="text-[14px] font-bold text-text-primary">Stundenplan</span>
+        </div>
+        <div className="flex items-center gap-1 text-text-muted">
+          <span className="text-[10px]">Details</span>
+          <ChevronRight size={11} />
+        </div>
+      </div>
+
+      {/* Mini 5-column grid */}
+      <div className="px-3 pb-3.5">
+        {/* Day headers */}
+        <div className="grid grid-cols-5 gap-1 mb-1.5">
+          {SP_DAYS.map((d) => (
+            <div key={d} className="text-center text-[9px] font-bold text-text-muted/70">{d}</div>
+          ))}
+        </div>
+        {/* Slot rows */}
+        <div className="grid grid-cols-5 gap-1">
+          {SP_DAYS.map((_, dayIdx) => (
+            <div key={dayIdx} className="flex flex-col gap-1">
+              {byDay[dayIdx].slice(0, maxRows).map((slot) => {
+                const subj = SUBJECT_INFO[slot.subjectId]
+                const color = subj?.color ?? '#6366F1'
+                return (
+                  <div
+                    key={slot.id}
+                    className="rounded-[6px] px-1 py-1 flex items-center justify-center overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${color}28, ${color}15)`, border: `1px solid ${color}40` }}
+                  >
+                    <span className="text-[8px] font-bold truncate leading-tight" style={{ color }}>
+                      {subj?.icon ?? ''}{subj?.name?.slice(0, 3) ?? slot.subjectId.slice(0, 3)}
+                    </span>
+                  </div>
+                )
+              })}
+              {/* Empty rows to keep uniform height */}
+              {Array.from({ length: maxRows - byDay[dayIdx].length }, (_, i) => (
+                <div key={`empty-${i}`} className="rounded-[6px] py-1" style={{ background: 'rgba(var(--color-border),0.15)' }}>
+                  <div className="h-[10px]" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ─── Stundenplan Full View ────────────────────────────────────────────────────
+
+function StundenplanFullView({
+  stundenplan,
+  onClose,
+  onEdit,
+}: {
+  stundenplan: Stundenplan
+  onClose: () => void
+  onEdit: () => void
+}) {
+  const byDay = SP_DAYS.map((_, i) =>
+    stundenplan.slots.filter((s) => s.day === i).sort((a, b) => a.startTime.localeCompare(b.startTime))
+  )
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-background flex flex-col">
+      {/* Header */}
+      <div
+        className="flex items-center gap-3 px-5 border-b border-border/40 shrink-0"
+        style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))', paddingBottom: 14 }}
+      >
+        <button
+          onClick={onClose}
+          className="w-9 h-9 rounded-full bg-surface-hover flex items-center justify-center text-text-muted press-sm shrink-0"
+        >
+          <ChevronLeft />
+        </button>
+        <h1 className="text-[20px] font-bold text-text-primary flex-1">Stundenplan</h1>
+        <button
+          onClick={onEdit}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] press-sm"
+          style={{
+            background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+            boxShadow: '0 3px 10px rgba(var(--color-accent),0.3)',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="text-white text-[12px] font-bold">Bearbeiten</span>
+        </button>
+      </div>
+
+      {/* 5-column Stundenplan */}
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-10">
+        {/* Day header row */}
+        <div className="grid grid-cols-5 gap-2 mb-3">
+          {SP_DAYS.map((d, i) => {
+            const count = byDay[i].length
+            return (
+              <div key={d} className="flex flex-col items-center">
+                <span className="text-[11px] font-bold text-text-primary">{d}</span>
+                <span className="text-[9px] text-text-muted">{count} Std</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-border/40 mb-3" />
+
+        {/* Columns — one row per "time slot layer", all days side by side */}
+        <div className="grid grid-cols-5 gap-2">
+          {SP_DAYS.map((_, dayIdx) => (
+            <div key={dayIdx} className="flex flex-col gap-2">
+              {byDay[dayIdx].length === 0 ? (
+                <div className="rounded-[10px] p-2 flex items-center justify-center" style={{ background: 'rgba(var(--color-border),0.12)', minHeight: 48 }}>
+                  <span className="text-[9px] text-text-muted/50">–</span>
+                </div>
+              ) : (
+                byDay[dayIdx].map((slot) => {
+                  const subj = SUBJECT_INFO[slot.subjectId]
+                  const color = subj?.color ?? '#6366F1'
+                  return (
+                    <div
+                      key={slot.id}
+                      className="rounded-[10px] px-2 py-2.5 flex flex-col items-center gap-0.5 overflow-hidden"
+                      style={{
+                        background: `linear-gradient(135deg, ${color}25, ${color}12)`,
+                        border: `1.5px solid ${color}50`,
+                      }}
+                    >
+                      <span className="text-base leading-none">{subj?.icon ?? '📚'}</span>
+                      <span className="text-[9px] font-bold text-center leading-tight truncate w-full text-center" style={{ color }}>
+                        {subj?.name ?? slot.subjectId}
+                      </span>
+                      <span className="text-[7px] text-text-muted/70 tabular-nums">{slot.startTime}</span>
+                      {slot.room && (
+                        <span className="text-[7px] text-text-muted/50 truncate w-full text-center">{slot.room}</span>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Slot count summary */}
+        <div className="mt-4 pt-3 border-t border-border/30 flex items-center justify-center gap-1.5">
+          <span className="text-[11px] text-text-muted">
+            {stundenplan.slots.length} Stunden gesamt · erstellt {new Date(stundenplan.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' })}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Stundenplan Setup Widget ─────────────────────────────────────────────────
 
 const SP_DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr'] as const
 
-function StundenplanSetupWidget({
-  faecher,
-  onSave,
-}: {
-  faecher: string[]
-  onSave: (slots: StundenplanSlot[]) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<'choose' | 'manual' | 'scan'>('choose')
-  const [slots, setSlots] = useState<StundenplanSlot[]>([])
+function StundenplanSetupWidget({ faecher, onSave, initialSlots }: { faecher: string[]; onSave: (slots: StundenplanSlot[]) => void; initialSlots?: StundenplanSlot[] }) {
+  const [open, setOpen] = useState(() => !!initialSlots)
+  const [mode, setMode] = useState<'choose' | 'manual' | 'scan'>(() => (initialSlots && initialSlots.length > 0 ? 'manual' : 'choose'))
+  const [slots, setSlots] = useState<StundenplanSlot[]>(initialSlots ?? [])
   const [activeDay, setActiveDay] = useState(0)
   const [addingSlot, setAddingSlot] = useState(false)
   const [newSlot, setNewSlot] = useState({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
@@ -458,13 +1325,8 @@ function StundenplanSetupWidget({
   const [scanError, setScanError] = useState('')
   const [fromAI, setFromAI] = useState(false)
 
-  const profileSubjects = faecher
-    .map((id) => (SUBJECT_INFO[id] ? { id, ...SUBJECT_INFO[id] } : null))
-    .filter((s): s is { id: string; name: string; icon: string; color: string } => s !== null)
-
-  const daySlots = slots
-    .filter((s) => s.day === activeDay)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+  const profileSubjects = faecher.map((id) => SUBJECT_INFO[id] ? { id, ...SUBJECT_INFO[id] } : null).filter((s): s is { id: string; name: string; icon: string; color: string } => s !== null)
+  const daySlots = slots.filter((s) => s.day === activeDay).sort((a, b) => a.startTime.localeCompare(b.startTime))
   const totalSlots = slots.length
 
   const handleStartTime = (startTime: string) => {
@@ -476,259 +1338,139 @@ function StundenplanSetupWidget({
 
   const commitSlot = () => {
     if (!newSlot.subjectId) return
-    const slot: StundenplanSlot = {
-      id: `slot-${Date.now()}`,
-      day: activeDay,
-      startTime: newSlot.startTime,
-      endTime: newSlot.endTime,
-      subjectId: newSlot.subjectId,
-      room: newSlot.room || undefined,
-    }
-    setSlots((prev) => [...prev, slot])
+    setSlots((prev) => [...prev, { id: `slot-${Date.now()}`, day: activeDay, startTime: newSlot.startTime, endTime: newSlot.endTime, subjectId: newSlot.subjectId, room: newSlot.room || undefined }])
     setAddingSlot(false)
     setNewSlot({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
   }
 
   const removeSlot = (id: string) => setSlots((prev) => prev.filter((s) => s.id !== id))
-
-  const handleSave = () => {
-    if (totalSlots > 0) onSave(slots)
-  }
-
-  const handleClose = () => {
-    setOpen(false)
-    setMode('choose')
-    setAddingSlot(false)
-  }
+  const handleSave  = () => { if (totalSlots > 0) onSave(slots) }
+  const handleClose = () => { setOpen(false); setMode('choose'); setAddingSlot(false) }
 
   const handleScanFileSelect = async (file: File) => {
-    setScanFile(file)
-    setScanPhase('analyzing')
-    setScanError('')
+    setScanFile(file); setScanPhase('analyzing'); setScanError('')
     try {
       const detected = await parseStundenplanFromImage(file, profileSubjects)
-      setSlots(detected)
-      setFromAI(true)
-      setMode('manual')
-      setScanPhase('idle')
+      setSlots(detected); setFromAI(true); setMode('manual'); setScanPhase('idle')
     } catch (err) {
-      setScanPhase('error')
-      setScanError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen')
+      setScanPhase('error'); setScanError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen')
     }
   }
 
   return (
     <section>
-      {/* Collapsed pill ───────────────────────────────── */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive px-5 py-4 text-left hover:bg-surface-hover active:scale-[0.99] transition-all duration-200"
-      >
-        <div className="w-10 h-10 rounded-[12px] bg-accent/10 flex items-center justify-center text-xl shrink-0">
-          🗓️
-        </div>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive px-5 py-4 text-left hover:bg-surface-hover active:scale-[0.99] transition-all duration-200">
+        <div className="w-10 h-10 rounded-[12px] bg-accent/10 flex items-center justify-center text-xl shrink-0">🗓️</div>
         <div className="flex-1">
           <p className="text-text-primary font-semibold text-[15px]">Stundenplan einrichten</p>
           <p className="text-text-muted text-[12px] mt-0.5">Dein Schultag auf einen Blick</p>
         </div>
-        <svg
-          className={`text-text-muted shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
-          width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        >
-          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <svg className={`text-text-muted shrink-0 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
 
-      {/* Expanded panel ───────────────────────────────── */}
       {open && (
         <div className="mt-1.5 bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden animate-fade-in">
 
-          {/* ── CHOOSE ─────────────────────────────────── */}
           {mode === 'choose' && (
             <div className="p-4 space-y-2">
-              <button
-                onClick={() => setMode('manual')}
-                className="w-full flex items-center gap-3 bg-background border border-border rounded-[14px] px-4 py-3.5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all"
-              >
+              <button onClick={() => setMode('manual')} className="w-full flex items-center gap-3 bg-background border border-border rounded-[14px] px-4 py-3.5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all">
                 <span className="text-xl shrink-0">✏️</span>
-                <div className="flex-1">
-                  <p className="text-text-primary font-semibold text-[14px]">Manuell eintragen</p>
-                  <p className="text-text-muted text-[12px] mt-0.5">Fächer und Zeiten eingeben</p>
-                </div>
-                <svg className="text-text-muted" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div className="flex-1"><p className="text-text-primary font-semibold text-[14px]">Manuell eintragen</p><p className="text-text-muted text-[12px] mt-0.5">Fächer und Zeiten eingeben</p></div>
+                <ChevronRight />
               </button>
-              <button
-                onClick={() => setMode('scan')}
-                className="w-full flex items-center gap-3 bg-background border border-border rounded-[14px] px-4 py-3.5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all"
-              >
+              <button onClick={() => setMode('scan')} className="w-full flex items-center gap-3 bg-background border border-border rounded-[14px] px-4 py-3.5 text-left hover:bg-surface-hover active:scale-[0.98] transition-all">
                 <span className="text-xl shrink-0">📷</span>
-                <div className="flex-1">
-                  <p className="text-text-primary font-semibold text-[14px]">Foto / Scan hochladen</p>
-                  <p className="text-text-muted text-[12px] mt-0.5">Stundenplan fotografieren oder PDF</p>
-                </div>
-                <svg className="text-text-muted" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <div className="flex-1"><p className="text-text-primary font-semibold text-[14px]">Foto / Scan hochladen</p><p className="text-text-muted text-[12px] mt-0.5">Stundenplan fotografieren oder PDF</p></div>
+                <ChevronRight />
               </button>
-              <button
-                onClick={handleClose}
-                className="w-full py-2.5 text-center text-[13px] text-text-muted hover:text-text-secondary transition-colors"
-              >
-                Schließen
-              </button>
+              <button onClick={handleClose} className="w-full py-2.5 text-center text-[13px] text-text-muted hover:text-text-secondary transition-colors">Schließen</button>
             </div>
           )}
 
-          {/* ── SCAN ───────────────────────────────────── */}
           {mode === 'scan' && (
             <div className="p-4 space-y-3">
-              <button
-                onClick={() => { setMode('choose'); setScanPhase('idle'); setScanError(''); setScanFile(null) }}
-                className="flex items-center gap-1.5 text-text-muted text-sm hover:text-text-secondary transition-colors"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Zurück
+              <button onClick={() => { setMode('choose'); setScanPhase('idle'); setScanError(''); setScanFile(null) }} className="flex items-center gap-1.5 text-text-muted text-sm hover:text-text-secondary transition-colors">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" /></svg>Zurück
               </button>
-
-              {/* IDLE — upload area */}
               {scanPhase === 'idle' && (
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="w-full border-2 border-dashed border-border rounded-[16px] p-6 flex flex-col items-center gap-2 hover:border-accent/50 hover:bg-accent/5 transition-all"
-                >
+                <button onClick={() => fileRef.current?.click()} className="w-full border-2 border-dashed border-border rounded-[16px] p-6 flex flex-col items-center gap-2 hover:border-accent/50 hover:bg-accent/5 transition-all">
                   <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center text-2xl">📷</div>
                   <p className="text-text-primary font-semibold text-[14px]">Foto oder PDF auswählen</p>
                   <p className="text-text-muted text-xs">KI erkennt Fächer und Zeiten automatisch</p>
                 </button>
               )}
-
-              {/* ANALYZING — spinner */}
               {scanPhase === 'analyzing' && (
                 <div className="bg-background border border-border rounded-[16px] p-5 flex flex-col items-center gap-3">
                   <div className="w-10 h-10 border-[3px] border-accent/25 border-t-accent rounded-full animate-spin" />
-                  <div className="text-center">
-                    <p className="text-text-primary font-semibold text-[14px]">KI analysiert Stundenplan…</p>
-                    <p className="text-text-muted text-[12px] mt-0.5 truncate max-w-[200px]">{scanFile?.name}</p>
-                  </div>
+                  <p className="text-text-primary font-semibold text-[14px]">KI analysiert Stundenplan…</p>
+                  <p className="text-text-muted text-[12px] truncate max-w-[200px]">{scanFile?.name}</p>
                 </div>
               )}
-
-              {/* ERROR */}
               {scanPhase === 'error' && (
                 <div className="space-y-2">
                   <div className="rounded-[14px] p-4" style={{ background: 'rgba(var(--color-danger),0.08)', border: '1px solid rgba(var(--color-danger),0.25)' }}>
                     <p className="text-text-primary font-semibold text-[14px] mb-1">Erkennung fehlgeschlagen</p>
                     <p className="text-text-muted text-[12px] leading-relaxed">{scanError}</p>
                   </div>
-                  <button
-                    onClick={() => { setScanPhase('idle'); setScanFile(null); setScanError('') }}
-                    className="w-full py-2.5 rounded-[12px] grad-accent text-white text-sm font-semibold active:scale-95 transition-all"
-                  >
-                    Erneut versuchen
-                  </button>
-                  <button
-                    onClick={() => { setMode('manual'); setScanPhase('idle'); setScanError('') }}
-                    className="w-full py-2.5 rounded-[12px] border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors"
-                  >
-                    Manuell eintragen
-                  </button>
+                  <button onClick={() => { setScanPhase('idle'); setScanFile(null); setScanError('') }} className="w-full py-2.5 rounded-[12px] grad-accent text-white text-sm font-semibold active:scale-95 transition-all">Erneut versuchen</button>
+                  <button onClick={() => { setMode('manual'); setScanPhase('idle'); setScanError('') }} className="w-full py-2.5 rounded-[12px] border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors">Manuell eintragen</button>
                 </div>
               )}
-
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,image/*,application/pdf"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleScanFileSelect(f) }}
-              />
+              <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleScanFileSelect(f) }} />
             </div>
           )}
 
-          {/* ── MANUAL ─────────────────────────────────── */}
           {mode === 'manual' && (
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <button
-                  onClick={() => { setMode('choose'); setAddingSlot(false); setFromAI(false) }}
-                  className="flex items-center gap-1.5 text-text-muted text-sm hover:text-text-secondary transition-colors"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Zurück
+                <button onClick={() => { setMode('choose'); setAddingSlot(false); setFromAI(false) }} className="flex items-center gap-1.5 text-text-muted text-sm hover:text-text-secondary transition-colors">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round" /></svg>Zurück
                 </button>
                 {totalSlots > 0 && !addingSlot && (
-                  <button
-                    onClick={handleSave}
-                    className="px-3.5 py-1.5 rounded-pill grad-accent text-white text-[12px] font-semibold press-sm"
-                  >
+                  <button onClick={handleSave} className="px-3.5 py-1.5 rounded-pill text-white text-[12px] font-bold press-sm" style={{ background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))', boxShadow: '0 3px 10px rgba(var(--color-accent),0.35)' }}>
                     Speichern · {totalSlots} Std
                   </button>
                 )}
               </div>
 
-              {/* KI success banner */}
               {fromAI && totalSlots > 0 && (
                 <div className="rounded-[12px] px-3 py-2.5 flex items-center gap-2" style={{ background: 'rgba(var(--color-success),0.08)', border: '1px solid rgba(var(--color-success),0.25)' }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-success shrink-0">
-                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <p className="text-[12px] font-medium text-success">{totalSlots} Stunden erkannt — prüfen & anpassen</p>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-success shrink-0"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <p className="text-[12px] font-medium text-success">{totalSlots} Stunden erkannt — prüfen &amp; anpassen</p>
                 </div>
               )}
 
-              {/* Day tabs */}
               <div className="flex gap-1">
                 {SP_DAY_SHORT.map((d, i) => {
                   const count = slots.filter((s) => s.day === i).length
                   return (
-                    <button
-                      key={d}
-                      onClick={() => { setActiveDay(i); setAddingSlot(false) }}
-                      className={`flex-1 flex flex-col items-center py-2 rounded-[12px] transition-all duration-200 ${
-                        activeDay === i ? 'grad-accent' : 'bg-background border border-border hover:bg-surface-hover'
-                      }`}
-                    >
+                    <button key={d} onClick={() => { setActiveDay(i); setAddingSlot(false) }}
+                      className="flex-1 flex flex-col items-center py-2 rounded-[12px] transition-all duration-200 border"
+                      style={activeDay === i ? {
+                        background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                        borderColor: 'transparent',
+                        boxShadow: '0 2px 8px rgba(var(--color-accent),0.3)',
+                      } : { background: 'rgb(var(--color-background))', borderColor: 'rgba(var(--color-border),0.6)' }}>
                       <span className={`text-[10px] font-semibold ${activeDay === i ? 'text-white/80' : 'text-text-muted'}`}>{d}</span>
-                      <span className={`text-[12px] font-bold mt-0.5 ${activeDay === i ? 'text-white' : count > 0 ? 'text-accent' : 'text-text-muted/30'}`}>
-                        {count > 0 ? count : '·'}
-                      </span>
+                      <span className={`text-[12px] font-bold mt-0.5 ${activeDay === i ? 'text-white' : count > 0 ? 'text-accent' : 'text-text-muted/30'}`}>{count > 0 ? count : '·'}</span>
                     </button>
                   )
                 })}
               </div>
 
-              {/* Slot list */}
               {daySlots.length > 0 && (
                 <div className="space-y-1.5">
                   {daySlots.map((slot) => {
                     const subj = SUBJECT_INFO[slot.subjectId]
                     return (
                       <div key={slot.id} className="bg-background border border-border/60 rounded-[12px] p-3 flex items-center gap-2.5 animate-fade-in">
-                        <div
-                          className="w-8 h-8 rounded-btn flex items-center justify-center text-base shrink-0"
-                          style={{ backgroundColor: `${subj?.color ?? '#7C3AED'}22` }}
-                        >
-                          {subj?.icon ?? '📚'}
-                        </div>
+                        <div className="w-8 h-8 rounded-btn flex items-center justify-center text-base shrink-0" style={{ backgroundColor: `${subj?.color ?? '#7C3AED'}22` }}>{subj?.icon ?? '📚'}</div>
                         <div className="flex-1 min-w-0">
                           <p className="text-text-primary font-semibold text-[13px]">{subj?.name ?? slot.subjectId}</p>
-                          <p className="text-text-muted text-[11px]">
-                            {slot.startTime} – {slot.endTime}{slot.room ? ` · ${slot.room}` : ''}
-                          </p>
+                          <p className="text-text-muted text-[11px]">{slot.startTime} – {slot.endTime}{slot.room ? ` · ${slot.room}` : ''}</p>
                         </div>
-                        <button
-                          onClick={() => removeSlot(slot.id)}
-                          className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-danger transition-colors shrink-0"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-                          </svg>
+                        <button onClick={() => removeSlot(slot.id)} className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-danger transition-colors shrink-0">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" /></svg>
                         </button>
                       </div>
                     )
@@ -736,99 +1478,42 @@ function StundenplanSetupWidget({
                 </div>
               )}
 
-              {/* Add slot trigger or inline form */}
               {!addingSlot ? (
-                <button
-                  onClick={() => setAddingSlot(true)}
-                  className="w-full border border-dashed border-border rounded-[12px] py-3 flex items-center justify-center gap-2 text-text-muted hover:border-accent/50 hover:text-accent hover:bg-accent/5 transition-all"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                  </svg>
+                <button onClick={() => setAddingSlot(true)} className="w-full border border-dashed border-border rounded-[12px] py-3 flex items-center justify-center gap-2 text-text-muted hover:border-accent/50 hover:text-accent hover:bg-accent/5 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
                   <span className="text-[13px] font-medium">Stunde hinzufügen</span>
                 </button>
               ) : (
                 <div className="bg-background border border-accent/30 rounded-[14px] p-3.5 space-y-2.5">
-                  {/* Time row */}
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Von</p>
-                      <input
-                        type="time"
-                        value={newSlot.startTime}
-                        onChange={(e) => handleStartTime(e.target.value)}
-                        className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
-                      />
+                      <input type="time" value={newSlot.startTime} onChange={(e) => handleStartTime(e.target.value)} className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors" />
                     </div>
                     <div className="flex-1">
                       <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1">Bis</p>
-                      <input
-                        type="time"
-                        value={newSlot.endTime}
-                        onChange={(e) => setNewSlot((n) => ({ ...n, endTime: e.target.value }))}
-                        className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
-                      />
+                      <input type="time" value={newSlot.endTime} onChange={(e) => setNewSlot((n) => ({ ...n, endTime: e.target.value }))} className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors" />
                     </div>
                   </div>
-
-                  {/* Subject grid */}
                   <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Fach</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {profileSubjects.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setNewSlot((n) => ({ ...n, subjectId: s.id }))}
-                        className={`flex items-center gap-1.5 p-2 rounded-[10px] border text-left transition-all duration-150 ${
-                          newSlot.subjectId === s.id
-                            ? 'border-accent bg-accent-soft'
-                            : 'border-border bg-surface hover:bg-surface-hover'
-                        }`}
-                      >
+                      <button key={s.id} onClick={() => setNewSlot((n) => ({ ...n, subjectId: s.id }))} className={`flex items-center gap-1.5 p-2 rounded-[10px] border text-left transition-all duration-150 ${newSlot.subjectId === s.id ? 'border-accent bg-accent-soft' : 'border-border bg-surface hover:bg-surface-hover'}`}>
                         <span className="text-sm shrink-0">{s.icon}</span>
-                        <span className={`text-[10px] font-medium leading-tight truncate ${newSlot.subjectId === s.id ? 'text-text-primary' : 'text-text-secondary'}`}>
-                          {s.name}
-                        </span>
+                        <span className={`text-[10px] font-medium leading-tight truncate ${newSlot.subjectId === s.id ? 'text-text-primary' : 'text-text-secondary'}`}>{s.name}</span>
                       </button>
                     ))}
                   </div>
-
-                  {/* Room */}
-                  <input
-                    type="text"
-                    value={newSlot.room}
-                    onChange={(e) => setNewSlot((n) => ({ ...n, room: e.target.value }))}
-                    placeholder="Raum (optional)"
-                    className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
-                  />
-
-                  {/* Actions */}
+                  <input type="text" value={newSlot.room} onChange={(e) => setNewSlot((n) => ({ ...n, room: e.target.value }))} placeholder="Raum (optional)" className="w-full bg-surface border border-border rounded-[10px] px-2.5 py-2 text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setAddingSlot(false)
-                        setNewSlot({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' })
-                      }}
-                      className="flex-1 py-2 rounded-[10px] border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors"
-                    >
-                      Abbrechen
-                    </button>
-                    <button
-                      onClick={commitSlot}
-                      disabled={!newSlot.subjectId}
-                      className="flex-1 py-2 rounded-[10px] grad-accent text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all"
-                    >
-                      Hinzufügen
-                    </button>
+                    <button onClick={() => { setAddingSlot(false); setNewSlot({ startTime: '08:00', endTime: '08:45', subjectId: '', room: '' }) }} className="flex-1 py-2 rounded-[10px] border border-border text-text-secondary text-sm font-medium hover:bg-surface-hover transition-colors">Abbrechen</button>
+                    <button onClick={commitSlot} disabled={!newSlot.subjectId} className="flex-1 py-2 rounded-[10px] text-white text-sm font-bold disabled:opacity-40 active:scale-95 transition-all" style={{ background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))' }}>Hinzufügen</button>
                   </div>
                 </div>
               )}
 
-              {/* Save button */}
               {totalSlots > 0 && !addingSlot && (
-                <button
-                  onClick={handleSave}
-                  className="w-full py-3 rounded-[14px] grad-accent text-white text-[14px] font-semibold press-sm"
-                >
+                <button onClick={handleSave} className="w-full py-3 rounded-[14px] text-white text-[14px] font-bold press-sm" style={{ background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))', boxShadow: '0 4px 16px rgba(var(--color-accent),0.4)' }}>
                   Stundenplan speichern · {totalSlots} Stunde{totalSlots === 1 ? '' : 'n'}
                 </button>
               )}
