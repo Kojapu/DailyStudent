@@ -399,6 +399,21 @@ export function SmartNotesScreen() {
           </CollapsibleSection>
         )}
 
+        {/* PDFs */}
+        {(userNote?.pdfAttachments?.length ?? 0) > 0 && (
+          <CollapsibleSection title="📄 PDF-Quelle">
+            <div className="space-y-2">
+              {userNote!.pdfAttachments!.map((pdf, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5 bg-background border border-border rounded-card">
+                  <div className="w-8 h-8 rounded-btn bg-accent/10 flex items-center justify-center shrink-0 text-base">📄</div>
+                  <p className="text-sm text-text-secondary truncate flex-1">{pdf.name}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-text-muted mt-2">PDF kann nicht erneut geöffnet werden — nur Name gespeichert</p>
+          </CollapsibleSection>
+        )}
+
         {/* Mitschrift */}
         {userNote?.content ? (
           <CollapsibleSection title="✏️ Meine Mitschrift">

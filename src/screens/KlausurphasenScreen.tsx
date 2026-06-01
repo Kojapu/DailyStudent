@@ -166,7 +166,7 @@ export function KlausurphasenScreen() {
 
             {/* Blurting */}
             <button
-              onClick={() => console.log('blurting')}
+              onClick={() => navigate('/klausurmodus/blurting')}
               className="flex-1 aspect-square bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col justify-between text-left press"
             >
               <GradientIcon gradient={G.blurting}>

@@ -162,15 +162,36 @@ export function UnterrichtScreen() {
       setImportCurrent(i)
       try {
         const noteId = `import-${Date.now()}-${i}`
+        const file = files[i]
         const { generated, noteTitle } = await analyzeFileToSmartNote(
-          files[i], noteId, subjectName, controller.signal,
+          file, noteId, subjectName, controller.signal,
         )
+
+        // Store source: image as base64 (≤2 MB), PDF as filename only
+        let sourceAttachments: string[] | undefined
+        let sourcePdfAttachments: { name: string }[] | undefined
+        if (file.type === 'application/pdf') {
+          sourcePdfAttachments = [{ name: file.name }]
+        } else if (file.size <= 2 * 1024 * 1024) {
+          try {
+            const base64 = await new Promise<string>((res, rej) => {
+              const reader = new FileReader()
+              reader.onload = (e) => res(e.target?.result as string)
+              reader.onerror = rej
+              reader.readAsDataURL(file)
+            })
+            sourceAttachments = [base64]
+          } catch { /* ignore read errors — original just won't be shown */ }
+        }
+
         const note: UserNote = {
           id: noteId,
           subjectId: subjectId || undefined,
           folderId: targetFolderId ?? (subjectId ? undefined : 'folder-no-subject'),
           title: noteTitle,
           content: generated.summary,
+          attachments: sourceAttachments,
+          pdfAttachments: sourcePdfAttachments,
           createdAt: new Date().toISOString(),
         }
         if (subjectId) saveNote(note, generated)

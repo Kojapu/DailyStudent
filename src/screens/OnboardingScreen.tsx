@@ -6,6 +6,7 @@ import { type UserProfile } from '../context/UserContext'
 import { analyzeFileToSmartNote, suggestImportDestination, GEMINI_BATCH_DELAY_MS } from '../lib/gemini'
 import type { UserNote, StundenplanSlot } from '../types'
 import { SUBJECT_INFO, SUBJECT_GROUPS } from '../data/subjectInfo'
+import { topics } from '../data/mockData'
 import { parseStundenplanFromImage } from '../lib/groq'
 
 const BUNDESLAENDER = [
@@ -30,7 +31,7 @@ const BUNDESLAENDER = [
 const KLASSEN = ['10', '11', '12', '13']
 const SCHULFORMEN = ['Gymnasium', 'FOS', 'Gesamtschule']
 
-type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 const DEV_PROFILE: UserProfile = {
   name: 'Simon Happ',
@@ -40,6 +41,7 @@ const DEV_PROFILE: UserProfile = {
   bundeslandId: 'ni',
   faecher: ['englisch', 'mathematik', 'biologie', 'physik', 'religion'],
   klausurtermine: [{ subjectId: 'mathematik', date: '2026-06-06' }],
+  folderSortMode: 'halbjahr',
   isDevMode: true,
   stundenplan: {
     createdAt: new Date().toISOString(),
@@ -68,11 +70,13 @@ export function OnboardingScreen() {
   const [zielnote, setZielnote] = useState('')
   const [bundeslandId, setBundeslandId] = useState('')
   const [faecher, setFaecher] = useState<string[]>([])
+  const [folderSortMode, setFolderSortMode] = useState<'manual' | 'halbjahr' | 'themen'>('halbjahr')
   const [stundenplanSlots, setStundenplanSlots] = useState<StundenplanSlot[]>([])
   const [klausurSubject, setKlausurSubject] = useState('')
   const [klausurDate, setKlausurDate] = useState('')
+  const [klausurTopic, setKlausurTopic] = useState('')
 
-  const progress = (step / 8) * 100
+  const progress = (step / 9) * 100
 
   const canNext: Record<Step, boolean> = {
     1: true,
@@ -80,13 +84,14 @@ export function OnboardingScreen() {
     3: true,
     4: bundeslandId !== '',
     5: faecher.length > 0,
-    6: true, // Stundenplan optional — manages own footer
-    7: true, // DateiImport manages own footer
-    8: true, // Klausur optional
+    6: true, // FolderSort — always valid
+    7: true, // Stundenplan optional — manages own footer
+    8: true, // DateiImport manages own footer
+    9: true, // Klausur optional
   }
 
   const next = () => {
-    if (step < 8) setStep((s) => (s + 1) as Step)
+    if (step < 9) setStep((s) => (s + 1) as Step)
   }
 
   const back = () => {
@@ -111,9 +116,10 @@ export function OnboardingScreen() {
       faecher,
       klausurtermine:
         klausurSubject && klausurDate
-          ? [{ subjectId: klausurSubject, date: klausurDate }]
+          ? [{ subjectId: klausurSubject, date: klausurDate, topic: klausurTopic || undefined }]
           : [],
       zielnote: zielnote || undefined,
+      folderSortMode,
       stundenplan: stundenplanSlots.length > 0
         ? { slots: stundenplanSlots, createdAt: new Date().toISOString() }
         : undefined,
@@ -179,29 +185,34 @@ export function OnboardingScreen() {
           <StepFaecher selected={faecher} onToggle={toggleFach} />
         )}
         {step === 6 && (
+          <StepFolderSort sortMode={folderSortMode} setSortMode={setFolderSortMode} klasse={klasse} />
+        )}
+        {step === 7 && (
           <StepStundenplan
             faecher={faecher}
             slots={stundenplanSlots}
             setSlots={setStundenplanSlots}
             onNext={next}
+            onUpdateFaecher={(ids) => setFaecher((prev) => [...prev, ...ids.filter((id) => !prev.includes(id))])}
           />
         )}
-        {step === 7 && (
+        {step === 8 && (
           <StepDateiImport onNext={next} faecher={faecher} />
         )}
-        {step === 8 && (
+        {step === 9 && (
           <StepKlausur
             faecher={faecher}
             subject={klausurSubject} setSubject={setKlausurSubject}
             date={klausurDate} setDate={setKlausurDate}
+            topic={klausurTopic} setTopic={setKlausurTopic}
           />
         )}
       </div>
 
-      {/* Footer CTA — steps 6 (Stundenplan) and 7 (DateiImport) manage their own footer */}
-      {step > 1 && step !== 6 && step !== 7 && (
+      {/* Footer CTA — steps 7 (Stundenplan) and 8 (DateiImport) manage their own footer */}
+      {step > 1 && step !== 7 && step !== 8 && (
         <div className="px-6 pb-10 pt-4">
-          {step < 8 ? (
+          {step < 9 ? (
             <Button variant="primary" fullWidth onClick={next} disabled={!canNext[step]}>
               Weiter
             </Button>
@@ -618,10 +629,101 @@ function StepFaecher({ selected, onToggle }: { selected: string[]; onToggle: (id
   )
 }
 
-/* ─── Step 6: SmartStundenplan ────────────────────────────── */
+/* ─── Step 6: FolderSort ──────────────────────────────────── */
+
+function StepFolderSort({
+  sortMode,
+  setSortMode,
+  klasse,
+}: {
+  sortMode: 'manual' | 'halbjahr' | 'themen'
+  setSortMode: (v: 'manual' | 'halbjahr' | 'themen') => void
+  klasse: string
+}) {
+  const isQPhase = klasse === '12' || klasse === '13'
+
+  const options: { id: 'manual' | 'halbjahr' | 'themen'; icon: string; title: string; desc: string; comingSoon?: boolean }[] = [
+    {
+      id: 'halbjahr',
+      icon: '📅',
+      title: isQPhase ? 'Nach Quartal' : 'Nach Halbjahr',
+      desc: isQPhase
+        ? 'Ordner werden automatisch nach Q1, Q2, Q3 und Q4 sortiert'
+        : 'Ordner werden automatisch nach 1. und 2. Halbjahr erstellt',
+    },
+    {
+      id: 'manual',
+      icon: '✋',
+      title: 'Manuell',
+      desc: 'Du erstellst und benennst Ordner selbst — maximale Kontrolle',
+    },
+    {
+      id: 'themen',
+      icon: '📚',
+      title: 'Nach Themen',
+      desc: 'Ordner nach Lehrplanthemen (KC) — folgt bald für alle Bundesländer',
+      comingSoon: true,
+    },
+  ]
+
+  return (
+    <div>
+      <h2 className="text-2xl font-bold text-text-primary mb-1">Wie sortierst du deine Notizen?</h2>
+      <p className="text-text-muted text-sm mb-8">
+        Wähle, wie deine Ordner im Unterrichtsbereich strukturiert werden.
+      </p>
+      <div className="space-y-3">
+        {options.map((opt) => {
+          const active = sortMode === opt.id
+          return (
+            <button
+              key={opt.id}
+              onClick={() => { if (!opt.comingSoon) setSortMode(opt.id) }}
+              className={`w-full flex items-start gap-4 p-4 rounded-[20px] border text-left transition-all duration-150 ${
+                active
+                  ? 'grad-accent border-transparent'
+                  : opt.comingSoon
+                  ? 'bg-surface border-border/40 opacity-55 cursor-not-allowed'
+                  : 'bg-surface border-border hover:bg-surface-hover active:scale-[0.98]'
+              }`}
+            >
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0 ${active ? 'bg-white/20' : 'bg-accent/10'}`}>
+                {opt.icon}
+              </div>
+              <div className="flex-1 min-w-0 pt-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className={`font-semibold text-[15px] ${active ? 'text-white' : 'text-text-primary'}`}>
+                    {opt.title}
+                  </p>
+                  {opt.comingSoon && (
+                    <span className="px-2 py-0.5 rounded-pill text-[10px] font-bold bg-border/80 text-text-muted">
+                      Bald
+                    </span>
+                  )}
+                </div>
+                <p className={`text-[13px] mt-0.5 leading-snug ${active ? 'text-white/80' : 'text-text-muted'}`}>
+                  {opt.desc}
+                </p>
+              </div>
+              {active && (
+                <div className="w-5 h-5 rounded-full bg-white/25 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Step 7: SmartStundenplan ────────────────────────────── */
 
 type StundenplanMode = 'choose' | 'manual' | 'scan'
-type ScanPhase = 'idle' | 'analyzing' | 'error'
+type ScanPhase = 'idle' | 'analyzing' | 'error' | 'mismatch'
 
 const DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr'] as const
 
@@ -630,11 +732,13 @@ function StepStundenplan({
   slots,
   setSlots,
   onNext,
+  onUpdateFaecher,
 }: {
   faecher: string[]
   slots: StundenplanSlot[]
   setSlots: (s: StundenplanSlot[]) => void
   onNext: () => void
+  onUpdateFaecher: (additionalIds: string[]) => void
 }) {
   const [mode, setMode] = useState<StundenplanMode>('choose')
   const [activeDay, setActiveDay] = useState(0)
@@ -645,6 +749,7 @@ function StepStundenplan({
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
   const [scanError, setScanError] = useState('')
   const [fromAI, setFromAI] = useState(false)
+  const [mismatchData, setMismatchData] = useState<{ slots: StundenplanSlot[]; additionalSubjectIds: string[] } | null>(null)
 
   const profileSubjects = faecher
     .map((id) => (SUBJECT_INFO[id] ? { id, ...SUBJECT_INFO[id] } : null))
@@ -684,10 +789,16 @@ function StepStundenplan({
     setScanPhase('analyzing')
     setScanError('')
     try {
-      const detected = await parseStundenplanFromImage(file, profileSubjects)
-      setSlots(detected)
-      setFromAI(true)
-      setMode('manual')
+      const allSubjects = Object.entries(SUBJECT_INFO).map(([id, info]) => ({ id, name: info.name }))
+      const result = await parseStundenplanFromImage(file, profileSubjects, allSubjects)
+      if (result.additionalSubjectIds.length > 0) {
+        setMismatchData(result)
+        setScanPhase('mismatch')
+      } else {
+        setSlots(result.slots)
+        setFromAI(true)
+        setMode('manual')
+      }
     } catch (err) {
       setScanPhase('error')
       setScanError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen')
@@ -807,9 +918,67 @@ function StepStundenplan({
               </button>
             </div>
           )}
+
+          {/* MISMATCH — AI found subjects not in user's faecher selection */}
+          {scanPhase === 'mismatch' && mismatchData && (
+            <div className="space-y-3">
+              <div className="rounded-[20px] p-5 space-y-3" style={{ background: 'rgba(255,149,0,0.08)', border: '1px solid rgba(255,149,0,0.25)' }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🔎</span>
+                  <p className="text-text-primary font-semibold text-[15px]">Neue Fächer erkannt</p>
+                </div>
+                <p className="text-text-muted text-[13px] leading-relaxed">
+                  Auf deinem Stundenplan wurden Fächer gefunden, die nicht in deiner Auswahl sind:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {mismatchData.additionalSubjectIds.map((id) => {
+                    const subj = SUBJECT_INFO[id]
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-pill"
+                        style={{ background: `${subj?.color ?? '#7C3AED'}22`, border: `1px solid ${subj?.color ?? '#7C3AED'}40` }}
+                      >
+                        <span className="text-sm">{subj?.icon ?? '📚'}</span>
+                        <span className="text-[13px] font-semibold" style={{ color: subj?.color ?? '#7C3AED' }}>
+                          {subj?.name ?? id}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  onUpdateFaecher(mismatchData.additionalSubjectIds)
+                  setSlots(mismatchData.slots)
+                  setFromAI(true)
+                  setMode('manual')
+                  setScanPhase('idle')
+                  setMismatchData(null)
+                }}
+                className="w-full py-3.5 rounded-[20px] grad-accent text-white text-[15px] font-semibold hover:opacity-90 active:scale-95 transition-all"
+              >
+                Fächer hinzufügen &amp; Stundenplan übernehmen
+              </button>
+              <button
+                onClick={() => {
+                  const faecherSet = new Set(faecher)
+                  setSlots(mismatchData.slots.filter((s) => faecherSet.has(s.subjectId)))
+                  setFromAI(true)
+                  setMode('manual')
+                  setScanPhase('idle')
+                  setMismatchData(null)
+                }}
+                className="w-full py-3 rounded-[20px] border border-border text-text-secondary text-[15px] font-medium hover:bg-surface-hover transition-colors"
+              >
+                Nur meine Fächer verwenden
+              </button>
+            </div>
+          )}
         </div>
 
-        {scanPhase !== 'analyzing' && scanPhase !== 'error' && (
+        {scanPhase !== 'analyzing' && scanPhase !== 'error' && scanPhase !== 'mismatch' && (
           <div className="pt-6 space-y-2">
             <button
               onClick={onNext}
@@ -1021,7 +1190,7 @@ function StepStundenplan({
   )
 }
 
-/* ─── Step 7: Datei-Import ────────────────────────────────── */
+/* ─── Step 8: Datei-Import ────────────────────────────────── */
 
 type ImportPhase = 'idle' | 'suggesting' | 'suggested' | 'manual' | 'processing' | 'done'
 
@@ -1317,18 +1486,23 @@ function StepDateiImport({ onNext, faecher }: { onNext: () => void; faecher: str
   )
 }
 
-/* ─── Step 8: Erste Klausur ───────────────────────────────── */
+/* ─── Step 9: Erste Klausur ───────────────────────────────── */
 
 function StepKlausur({
   faecher,
   subject, setSubject,
   date, setDate,
+  topic, setTopic,
 }: {
   faecher: string[]
   subject: string; setSubject: (v: string) => void
   date: string; setDate: (v: string) => void
+  topic: string; setTopic: (v: string) => void
 }) {
   const available = faecher.map((id) => ({ id, ...SUBJECT_INFO[id] })).filter((s) => s.name)
+  const subjectTopics = subject
+    ? topics.filter((t) => t.subjectId === subject).map((t) => t.name)
+    : []
 
   return (
     <div>
@@ -1363,7 +1537,30 @@ function StepKlausur({
             value={date}
             onChange={(e) => setDate(e.target.value)}
             min={new Date().toISOString().slice(0, 10)}
-            className="w-full bg-surface border border-border rounded-card px-4 py-3.5 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
+            className="w-full bg-surface border border-border rounded-card px-4 py-3.5 text-text-primary text-sm focus:outline-none focus:border-accent transition-colors mb-6"
+          />
+
+          <p className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Thema (optional)</p>
+          {subjectTopics.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {subjectTopics.slice(0, 6).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTopic(topic === t ? '' : t)}
+                  className="px-3 py-1.5 rounded-pill text-[12px] font-medium transition-all press-sm"
+                  style={topic === t ? { background: 'rgb(var(--color-accent))', color: 'white' } : { background: 'rgba(var(--color-border),0.5)', color: 'rgb(var(--color-text-secondary))' }}
+                >
+                  {t.length > 30 ? t.slice(0, 30) + '…' : t}
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            type="text"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="z.B. Weimarer Republik (optional)"
+            className="w-full bg-surface border border-border rounded-card px-4 py-3.5 text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
           />
         </>
       )}

@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { useUser, type EntryType, type PersonalEntry } from '../context/UserContext'
+import { useNavigate } from 'react-router-dom'
+import { useUser, type EntryType, type PersonalEntry, type KlausurTermin } from '../context/UserContext'
 import { SUBJECT_INFO } from '../data/subjectInfo'
-import type { StundenplanSlot, Stundenplan } from '../types'
+import { topics } from '../data/mockData'
+import type { StundenplanSlot, Stundenplan, AbiHalbjahr } from '../types'
+import { totalPunkteAllHalbjahre, pktToNoteAbi, noteColorAbi } from './AbiRechnerScreen'
 import { parseStundenplanFromImage } from '../lib/groq'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -65,8 +68,19 @@ function firstDayOffset(y: number, m: number): number {
 
 function dayLabelIdx(d: Date): number { const dow = d.getDay(); return dow === 0 ? 6 : dow - 1 }
 
+function addMinutes(time: string, mins: number): string {
+  const [h, m] = time.split(':').map(Number)
+  const total = h * 60 + m + mins
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+function timeToMin(time: string): number {
+  const [h, m] = time.split(':').map(Number)
+  return h * 60 + m
+}
+
 function generateRecurring(
-  form: { title: string; type: EntryType; date: string; time: string },
+  form: { title: string; type: EntryType; date: string; time: string; endTime?: string },
   freq: RecurFreq,
   endDate: string,
 ): PersonalEntry[] {
@@ -75,7 +89,7 @@ function generateRecurring(
   let cur = new Date(form.date + 'T00:00:00')
   const base = Date.now()
   while (cur <= end && result.length < 365) {
-    result.push({ id: `${base}-${result.length}`, title: form.title.trim(), type: form.type, date: toDateStr(cur), time: form.time })
+    result.push({ id: `${base}-${result.length}`, title: form.title.trim(), type: form.type, date: toDateStr(cur), time: form.time, endTime: form.endTime })
     if (freq === 'daily') cur = addDays(cur, 1)
     else if (freq === 'weekly') cur = addDays(cur, 7)
     else cur = new Date(cur.getFullYear(), cur.getMonth() + 1, cur.getDate())
@@ -98,7 +112,7 @@ function CloseIcon({ size = 14 }: { size?: number }) {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function KalenderScreen() {
-  const { profile, personalEntries, addEntry, removeEntry, updateProfile } = useUser()
+  const { profile, personalEntries, addEntry, removeEntry, updateProfile, addKlausurtermin } = useUser()
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const todayStr = toDateStr(today)
@@ -109,14 +123,16 @@ export function KalenderScreen() {
   const [viewDate, setViewDate] = useState(new Date(today))
 
   // Add-entry modal (FAB)
+  type FormType = EntryType | 'klausur'
   const [fabOpen,     setFabOpen]     = useState(false)
   const [fabAnimated, setFabAnimated] = useState(false)
-  const [addForm, setAddForm] = useState<{ title: string; type: EntryType; date: string; time: string }>({
-    title: '', type: 'termin', date: todayStr, time: '',
+  const [addForm, setAddForm] = useState<{ title: string; type: FormType; date: string; time: string; endTime: string; klausurSubjectId: string; klausurTopic: string }>({
+    title: '', type: 'termin', date: todayStr, time: '', endTime: '', klausurSubjectId: '', klausurTopic: '',
   })
   const [isRecurring, setIsRecurring] = useState(false)
   const [recurFreq,   setRecurFreq]   = useState<RecurFreq>('weekly')
   const [recurEnd,    setRecurEnd]    = useState('')
+
 
   // Entry detail
   const [selectedEntry, setSelectedEntry] = useState<PersonalEntry | null>(null)
@@ -129,8 +145,9 @@ export function KalenderScreen() {
   const hasStundenplan = (profile?.stundenplan?.slots?.length ?? 0) > 0
 
   // ── FAB open/close ──────────────────────────────────────────
-  const openFab = (date = todayStr, time = '') => {
-    setAddForm({ title: '', type: 'termin', date, time })
+  const openFab = (date = todayStr, time = '', type: FormType = 'termin') => {
+    const endTime = time ? addMinutes(time, 60) : ''
+    setAddForm({ title: '', type, date, time, endTime, klausurSubjectId: '', klausurTopic: '' })
     setIsRecurring(false)
     setRecurFreq('weekly')
     setRecurEnd(toDateStr(addDays(new Date(), 90)))
@@ -144,14 +161,21 @@ export function KalenderScreen() {
   }
 
   const handleAdd = () => {
-    if (!addForm.title.trim()) return
-    if (isRecurring && recurEnd) {
-      generateRecurring(addForm, recurFreq, recurEnd).forEach((e) => addEntry(e))
+    if (addForm.type === 'klausur') {
+      if (!addForm.klausurSubjectId || !addForm.date) return
+      addKlausurtermin({ subjectId: addForm.klausurSubjectId, date: addForm.date, topic: addForm.klausurTopic || undefined })
     } else {
-      addEntry({ id: Date.now().toString(), ...addForm, title: addForm.title.trim() })
+      if (!addForm.title.trim()) return
+      const entry = { id: Date.now().toString(), title: addForm.title.trim(), type: addForm.type as EntryType, date: addForm.date, time: addForm.time, endTime: addForm.endTime || undefined }
+      if (isRecurring && recurEnd) {
+        generateRecurring(entry, recurFreq, recurEnd).forEach((e) => addEntry(e))
+      } else {
+        addEntry(entry)
+      }
     }
     closeFab()
   }
+
 
   // ── Entry detail open/close ──────────────────────────────────
   const openDetail = (entry: PersonalEntry) => {
@@ -217,12 +241,14 @@ export function KalenderScreen() {
               {calWeekDays.map((d, i) => {
                 const isToday = toDateStr(d) === todayStr
                 const dayStr = toDateStr(d)
-                const hasEntry = personalEntries.some((e) => e.date === dayStr) || (profile?.klausurtermine ?? []).some((k) => k.date === dayStr)
+                const hasKlausur = (profile?.klausurtermine ?? []).some((k) => k.date === dayStr)
+                const hasEntry = personalEntries.some((e) => e.date === dayStr)
                 return (
                   <div key={i} className={`flex-1 flex flex-col items-center py-2 rounded-[12px] relative ${isToday ? 'grad-accent' : ''}`}>
                     <span className={`text-[10px] font-semibold ${isToday ? 'text-white/80' : 'text-text-muted'}`}>{DAY_LABELS[i]}</span>
                     <span className={`text-[14px] font-bold mt-0.5 leading-none ${isToday ? 'text-white' : 'text-text-secondary'}`}>{d.getDate()}</span>
-                    {hasEntry && <span className="absolute bottom-1 w-1 h-1 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgb(var(--color-accent))' }} />}
+                    {hasKlausur && <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.9)' : '#FF3B30' }} />}
+                    {!hasKlausur && hasEntry && <span className="absolute bottom-1 w-1 h-1 rounded-full" style={{ backgroundColor: isToday ? 'rgba(255,255,255,0.7)' : 'rgb(var(--color-accent))' }} />}
                   </div>
                 )
               })}
@@ -380,6 +406,12 @@ export function KalenderScreen() {
           />
         )}
 
+        {/* ── 2-column widgets: Klausuren + Abi-Schnitt ────────── */}
+        <div className="grid grid-cols-2 gap-3">
+          <KlausurterminWidget klausurtermine={profile?.klausurtermine ?? []} />
+          <AbiRechnerWidget abiHalbjahre={profile?.abiHalbjahre} zielnote={profile?.zielnote} />
+        </div>
+
         {/* ── Lernplan Placeholder ─────────────────────────────── */}
         <div className="bg-surface border border-border/60 rounded-2xl shadow-card-adaptive p-5 flex items-center gap-4">
           <div className="w-10 h-10 rounded-[14px] bg-accent/10 flex items-center justify-center text-xl shrink-0">📋</div>
@@ -467,59 +499,103 @@ export function KalenderScreen() {
 
             <div className="px-5 py-4 space-y-4">
 
-              {/* ── Type selector (premium) */}
-              <div className="flex gap-2">
+              {/* ── Type selector */}
+              <div className="grid grid-cols-4 gap-1.5">
                 {(Object.entries(TYPE_CONFIG) as [EntryType, typeof TYPE_CONFIG[EntryType]][]).map(([type, cfg]) => {
                   const active = addForm.type === type
                   return (
                     <button
                       key={type}
                       onClick={() => setAddForm((f) => ({ ...f, type }))}
-                      className="flex-1 py-2.5 rounded-[12px] text-[11px] font-bold flex items-center justify-center gap-1 border transition-all duration-200 press-sm"
-                      style={active ? {
-                        background: cfg.grad,
-                        borderColor: 'transparent',
-                        color: 'white',
-                        boxShadow: `0 4px 12px ${cfg.color}50`,
-                      } : { borderColor: 'rgba(var(--color-border),0.6)', color: 'rgb(var(--color-text-secondary))' }}
+                      className="py-2.5 rounded-[12px] text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 border transition-all duration-200 press-sm"
+                      style={active ? { background: cfg.grad, borderColor: 'transparent', color: 'white', boxShadow: `0 4px 12px ${cfg.color}50` } : { borderColor: 'rgba(var(--color-border),0.6)', color: 'rgb(var(--color-text-secondary))' }}
                     >
-                      {cfg.icon} {cfg.label}
+                      <span>{cfg.icon}</span>
+                      <span>{cfg.label}</span>
                     </button>
                   )
                 })}
+                {(() => {
+                  const active = addForm.type === 'klausur'
+                  return (
+                    <button
+                      onClick={() => setAddForm((f) => ({ ...f, type: 'klausur' }))}
+                      className="py-2.5 rounded-[12px] text-[10px] font-bold flex flex-col items-center justify-center gap-0.5 border transition-all duration-200 press-sm"
+                      style={active ? { background: 'linear-gradient(135deg,#FF3B30,#CC2E28)', borderColor: 'transparent', color: 'white', boxShadow: '0 4px 12px #FF3B3050' } : { borderColor: 'rgba(var(--color-border),0.6)', color: 'rgb(var(--color-text-secondary))' }}
+                    >
+                      <span>📝</span>
+                      <span>Klausur</span>
+                    </button>
+                  )
+                })()}
               </div>
 
-              {/* ── Title */}
-              <input
-                type="text"
-                value={addForm.title}
-                onChange={(e) => setAddForm((f) => ({ ...f, title: e.target.value }))}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                placeholder={
-                  addForm.type === 'lerneinheit' ? 'z.B. Geschichte Karteikarten' :
-                  addForm.type === 'termin' ? 'z.B. Nachhilfe bei Frau Müller' : 'z.B. Lernplan aktualisieren'
-                }
-                className="w-full bg-background border border-border rounded-[12px] px-4 py-3 text-[14px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
-              />
-
-              {/* ── Date + Time */}
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={addForm.date}
-                  onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
-                  className="flex-1 bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+              {/* ── Klausur form */}
+              {addForm.type === 'klausur' && (
+                <KlausurFormFields
+                  faecher={profile?.faecher ?? []}
+                  subjectId={addForm.klausurSubjectId}
+                  topic={addForm.klausurTopic}
+                  date={addForm.date}
+                  onSubjectId={(v) => setAddForm((f) => ({ ...f, klausurSubjectId: v }))}
+                  onTopic={(v) => setAddForm((f) => ({ ...f, klausurTopic: v }))}
+                  onDate={(v) => setAddForm((f) => ({ ...f, date: v }))}
                 />
-                <input
-                  type="time"
-                  value={addForm.time}
-                  onChange={(e) => setAddForm((f) => ({ ...f, time: e.target.value }))}
-                  className="w-[108px] bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
-                />
-              </div>
+              )}
 
-              {/* ── Recurring toggle */}
-              <div>
+              {/* ── Regular entry form */}
+              {addForm.type !== 'klausur' && (
+                <>
+                  <input
+                    type="text"
+                    value={addForm.title}
+                    onChange={(e) => setAddForm((f) => ({ ...f, title: e.target.value }))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                    placeholder={
+                      addForm.type === 'lerneinheit' ? 'z.B. Geschichte Karteikarten' :
+                      addForm.type === 'termin' ? 'z.B. Nachhilfe bei Frau Müller' : 'z.B. Lernplan aktualisieren'
+                    }
+                    className="w-full bg-background border border-border rounded-[12px] px-4 py-3 text-[14px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+                  />
+
+                  {/* Date + Von/Bis */}
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={addForm.date}
+                      onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+                      className="flex-1 bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Von</p>
+                      <input
+                        type="time"
+                        value={addForm.time}
+                        onChange={(e) => {
+                          const t = e.target.value
+                          setAddForm((f) => ({ ...f, time: t, endTime: t ? addMinutes(t, 60) : '' }))
+                        }}
+                        className="w-full bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Bis</p>
+                      <input
+                        type="time"
+                        value={addForm.endTime}
+                        onChange={(e) => setAddForm((f) => ({ ...f, endTime: e.target.value }))}
+                        className="w-full bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+
+              {/* ── Recurring toggle — only for regular entries */}
+              {addForm.type !== 'klausur' && <div>
                 <div className="flex gap-2 mb-3 p-1 bg-background rounded-[12px]">
                   {([false, true] as const).map((val) => {
                     const active = isRecurring === val
@@ -580,20 +656,29 @@ export function KalenderScreen() {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* ── Submit */}
-              <button
-                onClick={handleAdd}
-                disabled={!addForm.title.trim()}
-                className="w-full py-3 rounded-[14px] text-white text-[15px] font-bold press-sm disabled:opacity-40 transition-all"
-                style={{
-                  background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
-                  boxShadow: addForm.title.trim() ? '0 4px 16px rgba(var(--color-accent),0.4)' : 'none',
-                }}
-              >
-                {isRecurring ? 'Wiederkehrend speichern' : 'Hinzufügen'}
-              </button>
+              {(() => {
+                const canAdd = addForm.type === 'klausur'
+                  ? !!(addForm.klausurSubjectId && addForm.date)
+                  : !!addForm.title.trim()
+                return (
+                  <button
+                    onClick={handleAdd}
+                    disabled={!canAdd}
+                    className="w-full py-3 rounded-[14px] text-white text-[15px] font-bold press-sm disabled:opacity-40 transition-all"
+                    style={{
+                      background: addForm.type === 'klausur'
+                        ? 'linear-gradient(135deg,#FF3B30,#CC2E28)'
+                        : 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                      boxShadow: canAdd ? '0 4px 16px rgba(var(--color-accent),0.4)' : 'none',
+                    }}
+                  >
+                    {addForm.type === 'klausur' ? 'Klausur eintragen' : isRecurring ? 'Wiederkehrend speichern' : 'Hinzufügen'}
+                  </button>
+                )
+              })()}
             </div>
           </div>
 
@@ -612,6 +697,7 @@ export function KalenderScreen() {
           </button>
         </>
       )}
+
 
       {/* ══════════════════════════════════════════════════════════
           Entry Detail Modal — fixed overlay, no layout shift
@@ -658,7 +744,14 @@ export function KalenderScreen() {
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
                     <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span className="text-text-primary font-semibold text-[14px]">{selectedEntry.time} Uhr</span>
+                  <span className="text-text-primary font-semibold text-[14px]">
+                    {selectedEntry.time} Uhr{selectedEntry.endTime ? ` – ${selectedEntry.endTime} Uhr` : ''}
+                    {selectedEntry.endTime && selectedEntry.time && (() => {
+                      const mins = timeToMin(selectedEntry.endTime) - timeToMin(selectedEntry.time)
+                      if (mins > 0) return <span className="text-text-muted text-[12px] ml-2">({mins} Min)</span>
+                      return null
+                    })()}
+                  </span>
                 </div>
               )}
               <div className="flex items-center gap-3 bg-background rounded-[12px] px-4 py-3">
@@ -831,9 +924,10 @@ function DateStrip({ viewDate, todayStr, onDaySelect, onPrevWeek, onNextWeek }: 
               <span
                 className="w-7 h-7 flex items-center justify-center rounded-full text-[13px] font-bold transition-all"
                 style={isToday ? {
-                  background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.8))',
+                  background: 'linear-gradient(135deg, #7C3AED, #9F5FFA)',
                   color: 'white',
-                  boxShadow: '0 2px 8px rgba(var(--color-accent),0.4)',
+                  boxShadow: '0 0 14px 4px rgba(124,58,237,0.65), 0 2px 6px rgba(124,58,237,0.45)',
+                  border: '1px solid rgba(159,95,250,0.6)',
                 } : isSelected ? {
                   border: '2px solid rgb(var(--color-accent))',
                   color: 'rgb(var(--color-accent))',
@@ -962,9 +1056,13 @@ function TwoDayView({ viewDate, todayStr, stundenplan, personalEntries, klausurt
                 {/* Personal entries */}
                 {dayEntries.map((entry) => {
                   const cfg = TYPE_CONFIG[entry.type]
+                  const startMin = timeToMin(entry.time)
+                  const endMin = entry.endTime ? timeToMin(entry.endTime) : startMin + 60
+                  const heightPx = Math.max(durToPx(Math.max(endMin - startMin, 15)), 24)
                   return (
-                    <div key={entry.id} className="absolute left-0.5 right-0.5 rounded-[7px] flex items-center px-2 overflow-hidden cursor-pointer press-sm" style={{ top: toPx(entry.time), height: 28, background: `linear-gradient(135deg, ${cfg.color}40, ${cfg.color}25)`, borderLeft: `2.5px solid ${cfg.color}` }} onClick={(e) => { e.stopPropagation(); onEntryPress(entry) }}>
-                      <span className="text-[9px] font-bold truncate" style={{ color: cfg.color }}>{cfg.icon} {entry.title}</span>
+                    <div key={entry.id} className="absolute left-0.5 right-0.5 rounded-[7px] flex flex-col justify-center px-2 overflow-hidden cursor-pointer press-sm" style={{ top: toPx(entry.time), height: heightPx, background: `linear-gradient(135deg, ${cfg.color}40, ${cfg.color}25)`, borderLeft: `2.5px solid ${cfg.color}` }} onClick={(e) => { e.stopPropagation(); onEntryPress(entry) }}>
+                      <span className="text-[9px] font-bold truncate leading-tight" style={{ color: cfg.color }}>{cfg.icon} {entry.title}</span>
+                      {heightPx > 36 && entry.endTime && <span className="text-[7px] truncate" style={{ color: cfg.color, opacity: 0.7 }}>{entry.time}–{entry.endTime}</span>}
                     </div>
                   )
                 })}
@@ -1132,7 +1230,7 @@ function StundenplanMiniWidget({ stundenplan, onOpen }: { stundenplan: Stundenpl
   const byDay = SP_DAYS.map((_, i) =>
     stundenplan.slots.filter((s) => s.day === i).sort((a, b) => a.startTime.localeCompare(b.startTime))
   )
-  const maxRows = Math.min(Math.max(...byDay.map((d) => d.length), 1), 5)
+  const maxRows = Math.max(...byDay.map((d) => d.length), 1)
 
   return (
     <button
@@ -1308,6 +1406,260 @@ function StundenplanFullView({
   )
 }
 
+// ─── Klausurtermin Widget (compact half-width) ───────────────────────────────
+
+function KlausurterminWidget({ klausurtermine }: { klausurtermine: KlausurTermin[] }) {
+  const navigate = useNavigate()
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const todayStr = toDateStr(today)
+  const upcoming = klausurtermine
+    .filter((k) => k.date >= todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const daysLeft = (dateStr: string) =>
+    Math.round((new Date(dateStr + 'T00:00:00').getTime() - today.getTime()) / 86400000)
+
+  const next = upcoming[0]
+
+  return (
+    <button
+      onClick={() => navigate('/klausuren')}
+      className="flex flex-col bg-surface border border-border/60 rounded-2xl shadow-card-adaptive overflow-hidden press-sm active:scale-[0.99] transition-all duration-200 text-left"
+      style={{ minHeight: 152 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3.5 pt-3.5 pb-2 shrink-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div
+            className="w-6 h-6 rounded-[7px] flex items-center justify-center shrink-0"
+            style={{ background: 'linear-gradient(135deg,#FF3B30,#CC2E28)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+          </div>
+          <span className="text-[12px] font-bold text-text-primary">Klausuren</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {upcoming.length > 0 && (
+            <span
+              className="text-[10px] font-bold px-1.5 py-0.5 rounded-pill"
+              style={{ background: 'rgba(255,59,48,0.12)', color: '#FF3B30' }}
+            >
+              {upcoming.length}
+            </span>
+          )}
+          <ChevronRight size={10} />
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 px-3.5 pb-3.5 flex flex-col justify-between">
+        {next ? (
+          <>
+            <div>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-lg leading-none">{SUBJECT_INFO[next.subjectId]?.icon ?? '📝'}</span>
+                <span className="text-[13px] font-bold text-text-primary truncate">
+                  {SUBJECT_INFO[next.subjectId]?.name ?? next.subjectId}
+                </span>
+              </div>
+              {next.topic && (
+                <p className="text-[10px] text-text-muted truncate">{next.topic}</p>
+              )}
+            </div>
+            {(() => {
+              const days = daysLeft(next.date)
+              const color = days === 0 || days <= 7 ? '#FF3B30' : days <= 14 ? '#FF9500' : '#94A3B8'
+              return (
+                <span
+                  className="self-start text-[11px] font-bold px-2 py-1 rounded-pill"
+                  style={{ background: `${color}18`, color }}
+                >
+                  {days === 0 ? 'Heute!' : days === 1 ? 'Morgen' : `in ${days}T`}
+                </span>
+              )
+            })()}
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col justify-center">
+            <p className="text-[12px] text-text-muted">Keine Klausuren</p>
+            <p className="text-[11px] text-text-muted/50 mt-0.5">Tippen →</p>
+          </div>
+        )}
+      </div>
+    </button>
+  )
+}
+
+// ─── Abi-Rechner Widget (compact half-width) ─────────────────────────────────
+
+function AbiRechnerWidget({
+  abiHalbjahre,
+  zielnote,
+}: {
+  abiHalbjahre?: AbiHalbjahr[]
+  zielnote?: string
+}) {
+  const navigate = useNavigate()
+  const overall = totalPunkteAllHalbjahre(abiHalbjahre ?? [])
+  const noteStr = overall !== null ? pktToNoteAbi(overall) : null
+  const color = noteStr ? noteColorAbi(noteStr) : 'rgb(var(--color-text-muted))'
+
+  const isOnTrack =
+    noteStr && zielnote
+      ? parseFloat(noteStr.replace(',', '.')) <= parseFloat(zielnote.replace(',', '.'))
+      : null
+
+  return (
+    <button
+      onClick={() => navigate('/abi-rechner')}
+      className="flex flex-col bg-surface border border-border/60 rounded-2xl shadow-card-adaptive overflow-hidden press-sm active:scale-[0.99] transition-all duration-200 text-left"
+      style={{ minHeight: 152 }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3.5 pt-3.5 pb-2 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="w-6 h-6 rounded-[7px] flex items-center justify-center text-sm shrink-0"
+            style={{ background: 'linear-gradient(135deg, rgb(var(--color-accent)), rgba(var(--color-accent),0.75))' }}
+          >
+            🎓
+          </div>
+          <span className="text-[12px] font-bold text-text-primary">Abi-Schnitt</span>
+        </div>
+        <ChevronRight size={10} />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 px-3.5 pb-3.5 flex flex-col justify-between">
+        {noteStr ? (
+          <>
+            <div>
+              <div className="flex items-end gap-1 leading-none">
+                <span
+                  className="font-black"
+                  style={{ fontSize: 30, color, letterSpacing: '-0.02em' }}
+                >
+                  {overall!.toFixed(1).replace('.', ',')}
+                </span>
+                <span className="text-[10px] text-text-muted mb-0.5">Pkt</span>
+              </div>
+              <p className="text-[13px] font-bold mt-0.5" style={{ color }}>
+                ≈ {noteStr}
+              </p>
+            </div>
+            {zielnote && (
+              <p className="text-[10px] text-text-muted">
+                Ziel {zielnote}{' '}
+                {isOnTrack ? (
+                  <span style={{ color: '#34C759' }}>✓</span>
+                ) : (
+                  <span style={{ color: '#FF9500' }}>↑</span>
+                )}
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col justify-center">
+            <p className="text-[12px] text-text-muted">Noten eintragen</p>
+            <p className="text-[11px] text-text-muted/50 mt-0.5">Tippen →</p>
+          </div>
+        )}
+      </div>
+    </button>
+  )
+}
+
+// ─── Klausur Form Fields (shared by FAB + standalone modal) ──────────────────
+
+function KlausurFormFields({
+  faecher,
+  subjectId,
+  topic,
+  date,
+  onSubjectId,
+  onTopic,
+  onDate,
+}: {
+  faecher: string[]
+  subjectId: string
+  topic: string
+  date: string
+  onSubjectId: (v: string) => void
+  onTopic: (v: string) => void
+  onDate: (v: string) => void
+}) {
+  const subjectTopics = subjectId
+    ? topics.filter((t) => t.subjectId === subjectId).map((t) => t.name)
+    : []
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2">Fach</p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {faecher.map((id) => {
+            const subj = SUBJECT_INFO[id]
+            if (!subj) return null
+            const active = subjectId === id
+            return (
+              <button
+                key={id}
+                onClick={() => onSubjectId(id)}
+                className="flex items-center gap-1.5 p-2.5 rounded-[10px] border text-left transition-all press-sm"
+                style={active ? { background: `${subj.color}18`, borderColor: subj.color } : { borderColor: 'rgba(var(--color-border),0.6)', background: 'transparent' }}
+              >
+                <span className="text-sm shrink-0">{subj.icon}</span>
+                <span className="text-[10px] font-semibold truncate leading-tight" style={{ color: active ? subj.color : 'rgb(var(--color-text-secondary))' }}>{subj.name}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Datum</p>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => onDate(e.target.value)}
+          min={new Date().toISOString().slice(0, 10)}
+          className="w-full bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary focus:outline-none focus:border-accent transition-colors"
+        />
+      </div>
+
+      <div>
+        <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-1.5">Thema (optional)</p>
+        {subjectTopics.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {subjectTopics.slice(0, 6).map((t) => (
+              <button
+                key={t}
+                onClick={() => onTopic(topic === t ? '' : t)}
+                className="px-2.5 py-1 rounded-pill text-[11px] font-medium press-sm transition-all"
+                style={topic === t
+                  ? { background: 'linear-gradient(135deg,#FF3B30,#CC2E28)', color: 'white' }
+                  : { background: 'rgba(var(--color-border),0.4)', color: 'rgb(var(--color-text-secondary))' }
+                }
+              >
+                {t.length > 28 ? t.slice(0, 28) + '…' : t}
+              </button>
+            ))}
+          </div>
+        )}
+        <input
+          type="text"
+          value={topic}
+          onChange={(e) => onTopic(e.target.value)}
+          placeholder="z.B. Weimarer Republik"
+          className="w-full bg-background border border-border rounded-[12px] px-3 py-2.5 text-[13px] text-text-primary placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+        />
+      </div>
+    </div>
+  )
+}
+
 // ─── Stundenplan Setup Widget ─────────────────────────────────────────────────
 
 const SP_DAY_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr'] as const
@@ -1350,8 +1702,8 @@ function StundenplanSetupWidget({ faecher, onSave, initialSlots }: { faecher: st
   const handleScanFileSelect = async (file: File) => {
     setScanFile(file); setScanPhase('analyzing'); setScanError('')
     try {
-      const detected = await parseStundenplanFromImage(file, profileSubjects)
-      setSlots(detected); setFromAI(true); setMode('manual'); setScanPhase('idle')
+      const result = await parseStundenplanFromImage(file, profileSubjects)
+      setSlots(result.slots); setFromAI(true); setMode('manual'); setScanPhase('idle')
     } catch (err) {
       setScanPhase('error'); setScanError(err instanceof Error ? err.message : 'Analyse fehlgeschlagen')
     }

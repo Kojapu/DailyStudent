@@ -43,6 +43,9 @@ import { ProbeklausurMode1Screen } from '../screens/ProbeklausurMode1Screen'
 import { ProbeklausurMode2Screen } from '../screens/ProbeklausurMode2Screen'
 import { ProbeklausurMode3Screen } from '../screens/ProbeklausurMode3Screen'
 import { ProbeklausurMode4Screen } from '../screens/ProbeklausurMode4Screen'
+import { BlurtingScreen } from '../screens/BlurtingScreen'
+import { KlausurplanScreen } from '../screens/KlausurplanScreen'
+import { AbiRechnerScreen } from '../screens/AbiRechnerScreen'
 
 function ThemeApplier() {
   const { theme } = useUser()
@@ -82,6 +85,7 @@ function Layout() {
   const hideNav =
     location.pathname === '/klausurmodus/klausur' ||
     location.pathname === '/klausurmodus/karteikarten/neu' ||
+    location.pathname === '/klausurmodus/blurting' ||
     location.pathname.endsWith('/neue-notiz') ||
     location.pathname.startsWith('/klausurmodus/probeklausur/')
 
@@ -90,6 +94,8 @@ function Layout() {
       <Routes>
         <Route path="/" element={<Navigate to="/unterricht" replace />} />
         <Route path="/kalender" element={<KalenderScreen />} />
+        <Route path="/klausuren" element={<KlausurplanScreen />} />
+        <Route path="/abi-rechner" element={<AbiRechnerScreen />} />
         <Route path="/unterricht" element={<UnterrichtScreen />} />
         <Route path="/unterricht/neue-notiz" element={<NoteCreateScreen />} />
         <Route path="/unterricht/ohne-fach/ordner/:folderId" element={<FolderScreen />} />
@@ -110,6 +116,7 @@ function Layout() {
         <Route path="/klausurmodus/probeklausur/vollstaendige-klausur" element={<ProbeklausurMode2Screen />} />
         <Route path="/klausurmodus/probeklausur/materialklausur" element={<ProbeklausurMode3Screen />} />
         <Route path="/klausurmodus/probeklausur/ohne-material" element={<ProbeklausurMode4Screen />} />
+        <Route path="/klausurmodus/blurting" element={<BlurtingScreen />} />
         <Route path="/profil" element={<ProfilScreen />} />
       </Routes>
       {!hideNav && <BottomNav />}

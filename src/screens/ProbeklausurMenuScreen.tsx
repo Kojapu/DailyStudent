@@ -1,20 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 
-const MODES = [
-  {
-    id: 1,
-    route: '/klausurmodus/probeklausur/afb-trainer',
-    gradient: 'linear-gradient(145deg, #7C3AED, #4C1D95)',
-    title: 'AFB-Aufgabentrainer',
-    subtitle: 'Einzelne Aufgabe gezielt üben',
-    description: 'Du wählst das AFB-Level (I, II oder III) und bekommst genau eine präzise Abituraufgabe auf diesem Niveau — mit passenden Materialien wenn nötig.',
-    badges: ['1 Aufgabe', 'AFB I / II / III', 'KI-Korrektur'],
-    icon: (
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-      </svg>
-    ),
-  },
+const MODES_FULL = [
   {
     id: 2,
     route: '/klausurmodus/probeklausur/vollstaendige-klausur',
@@ -30,15 +16,31 @@ const MODES = [
     ),
   },
   {
+    id: 1,
+    route: '/klausurmodus/probeklausur/afb-trainer',
+    gradient: 'linear-gradient(145deg, #7C3AED, #4C1D95)',
+    title: 'AFB-Aufgabentrainer',
+    subtitle: 'Einzelne Aufgabe gezielt üben',
+    description: 'Du wählst das AFB-Level (I, II oder III) und bekommst genau eine präzise Abituraufgabe auf diesem Niveau — mit passenden Materialien wenn nötig.',
+    badges: ['1 Aufgabe', 'AFB I / II / III', 'KI-Korrektur'],
+    icon: (
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+      </svg>
+    ),
+  },
+]
+
+const MODES_HALF = [
+  {
     id: 3,
     route: '/klausurmodus/probeklausur/materialklausur',
     gradient: 'linear-gradient(145deg, #059669, #064E3B)',
     title: 'Materialklausur',
     subtitle: 'Alle drei AFB zu einem Material',
-    description: 'Ein Materialcluster (1–3 zusammenhängende Quellen) und drei Aufgaben — AFB I bereitet vor, AFB II wertet aus, AFB III geht darüber hinaus.',
     badges: ['1–3 Materialien', 'AFB I + II + III', 'KI-Korrektur'],
     icon: (
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
       </svg>
     ),
@@ -49,10 +51,9 @@ const MODES = [
     gradient: 'linear-gradient(145deg, #DB2777, #9D174D)',
     title: 'Ohne Material',
     subtitle: 'Alles aus dem Kopf',
-    description: 'Drei Aufgaben ohne jede Hilfsmittel. Teste ob du den Stoff wirklich verstanden hast — Reproduktion, Transfer und Bewertung rein aus dem Gedächtnis.',
     badges: ['Kein Material', 'AFB I + II + III', 'KI-Korrektur'],
     icon: (
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r="0.5" fill="white" />
         <circle cx="12" cy="12" r="10" />
       </svg>
@@ -66,7 +67,7 @@ export function ProbeklausurMenuScreen() {
   return (
     <div className="flex flex-col min-h-screen bg-background pb-28">
       {/* Header */}
-      <div className="px-4" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
+      <div className="px-5" style={{ paddingTop: 'max(58px, calc(env(safe-area-inset-top, 0px) + 18px))' }}>
         <button
           onClick={() => navigate('/klausurmodus')}
           className="flex items-center gap-1.5 text-accent text-[14px] font-semibold mb-4 press-sm"
@@ -82,9 +83,10 @@ export function ProbeklausurMenuScreen() {
         </p>
       </div>
 
-      {/* Mode cards */}
-      <div className="px-4 mt-5 space-y-3">
-        {MODES.map((mode) => (
+      <div className="px-5 mt-5 space-y-3">
+
+        {/* Full-width cards: Vollständige Klausur + AFB-Aufgabentrainer */}
+        {MODES_FULL.map((mode) => (
           <button
             key={mode.id}
             onClick={() => navigate(mode.route)}
@@ -127,6 +129,36 @@ export function ProbeklausurMenuScreen() {
           </button>
         ))}
 
+        {/* Half-width cards side by side: Materialklausur + Ohne Material */}
+        <div className="flex gap-3">
+          {MODES_HALF.map((mode) => (
+            <button
+              key={mode.id}
+              onClick={() => navigate(mode.route)}
+              className="flex-1 bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col text-left press"
+            >
+              <div
+                className="w-10 h-10 rounded-[12px] flex items-center justify-center mb-3 shrink-0"
+                style={{ background: mode.gradient }}
+              >
+                {mode.icon}
+              </div>
+              <p className="text-text-primary font-bold text-[15px] leading-tight">{mode.title}</p>
+              <p className="text-text-muted text-[12px] mt-1 leading-snug flex-1">{mode.subtitle}</p>
+              <div className="mt-3 flex flex-wrap gap-1">
+                {mode.badges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="px-2 py-0.5 rounded-pill text-[10px] font-semibold bg-background text-text-secondary"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+
         {/* Info footer */}
         <div className="bg-surface rounded-[16px] border border-border/60 p-4 flex items-start gap-3">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -138,6 +170,7 @@ export function ProbeklausurMenuScreen() {
             Alle Modi folgen den Niedersächsischen Abitur-Regeln: Operatoren, BE-Angaben, AFB-Progression und fachspezifische Aufgabentypen.
           </p>
         </div>
+
       </div>
     </div>
   )

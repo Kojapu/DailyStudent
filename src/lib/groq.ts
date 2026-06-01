@@ -516,10 +516,16 @@ function calcEndTime(startTime: string): string {
   return `${String(Math.floor(endMin / 60) % 24).padStart(2, '0')}:${String(endMin % 60).padStart(2, '0')}`
 }
 
+export interface StundenplanScanResult {
+  slots: StundenplanSlot[]
+  additionalSubjectIds: string[]
+}
+
 export async function parseStundenplanFromImage(
   file: File,
   faecher: { id: string; name: string }[],
-): Promise<StundenplanSlot[]> {
+  allSubjects?: { id: string; name: string }[],
+): Promise<StundenplanScanResult> {
   // PDF → first page as JPEG data URL via pdfjs
   let dataUrl: string
   if (file.type === 'application/pdf') {
@@ -537,7 +543,11 @@ export async function parseStundenplanFromImage(
   }
 
   const { base64, mimeType } = await resizeImage(dataUrl, 1920)
-  const subjectList = faecher.map((s) => s.name).join(', ')
+  const combinedSubjects = allSubjects
+    ? [...faecher, ...allSubjects.filter((s) => !faecher.find((f) => f.id === s.id))]
+    : faecher
+  const faecherIds = new Set(faecher.map((f) => f.id))
+  const subjectList = combinedSubjects.map((s) => s.name).join(', ')
 
   const raw = await groqFetch({
     model: VISION_MODEL,
@@ -552,7 +562,7 @@ export async function parseStundenplanFromImage(
             type: 'text',
             text: `Du analysierst einen deutschen Schulstundenplan. Extrahiere alle Unterrichtsstunden Montag bis Freitag.
 
-Schulfächer des Schülers: ${subjectList}
+Bekannte Schulfächer: ${subjectList}
 
 Antworte NUR mit diesem JSON (kein anderer Text):
 {
@@ -592,7 +602,7 @@ Regeln:
         ? slot.endTime.padStart(5, '0')
         : calcEndTime(startTime)
 
-    const subjectId = matchSubjectId(slot.subject ?? '', faecher)
+    const subjectId = matchSubjectId(slot.subject ?? '', combinedSubjects)
     if (!subjectId) continue
 
     const key = `${slot.day}-${startTime}-${subjectId}`
@@ -609,5 +619,47 @@ Regeln:
   }
 
   if (result.length === 0) throw new Error('Keine bekannten Fächer im Stundenplan erkannt')
-  return result
+  const additionalSubjectIds = [...new Set(result.map((s) => s.subjectId).filter((id) => !faecherIds.has(id)))]
+  return { slots: result, additionalSubjectIds }
+}
+
+/* ─── Blurting-Evaluator ─────────────────────────────────── */
+
+interface BlurtingEvalJSON {
+  correct: string[]
+  forgotten: string[]
+  corrections: string[]
+}
+
+export async function evaluateBlurting(
+  userText: string,
+  referenceContent: string,
+): Promise<{ correct: string[]; forgotten: string[]; corrections: string[] }> {
+  const refSection = referenceContent.trim()
+    ? `Referenzinhalt:\n${referenceContent.slice(0, 2000)}`
+    : 'Kein spezifischer Referenzinhalt — bewerte den Text auf inhaltliche Vollständigkeit und Korrektheit.'
+
+  const content = await groqFetch({
+    model: TEXT_MODEL,
+    max_tokens: 1024,
+    temperature: 0.3,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'Du bist ein Lerncoach für deutsche Gymnasiasten (Klasse 10–13). Vergleiche den Text des Schülers mit dem Referenzinhalt. Antworte auf Deutsch. Gib nur valides JSON zurück, kein Markdown.',
+      },
+      {
+        role: 'user',
+        content: `${refSection}\n\nSchülertext:\n${userText.slice(0, 2000)}\n\nGib genau dieses JSON zurück:\n{"correct": ["Punkt den der Schüler richtig hatte"], "forgotten": ["Wichtiger Punkt der fehlt"], "corrections": ["Kleine Korrektur oder Ungenauigkeit"]}`,
+      },
+    ],
+  })
+
+  const parsed = JSON.parse(content) as BlurtingEvalJSON
+  return {
+    correct: Array.isArray(parsed.correct) ? parsed.correct : [],
+    forgotten: Array.isArray(parsed.forgotten) ? parsed.forgotten : [],
+    corrections: Array.isArray(parsed.corrections) ? parsed.corrections : [],
+  }
 }
