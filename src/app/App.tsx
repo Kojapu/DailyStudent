@@ -48,6 +48,7 @@ import { KlausurplanScreen } from '../screens/KlausurplanScreen'
 import { AbiRechnerScreen } from '../screens/AbiRechnerScreen'
 import { HausaufgabenheftScreen } from '../screens/HausaufgabenheftScreen'
 import { InsightsScreen } from '../screens/InsightsScreen'
+import { FaecherEditScreen } from '../screens/FaecherEditScreen'
 
 function ThemeApplier() {
   const { theme } = useUser()
@@ -128,6 +129,7 @@ function Layout() {
         <Route path="/klausurmodus/probeklausur/ohne-material" element={<ProbeklausurMode4Screen />} />
         <Route path="/klausurmodus/blurting" element={<BlurtingScreen />} />
         <Route path="/profil" element={<ProfilScreen />} />
+        <Route path="/profil/faecher" element={<FaecherEditScreen />} />
         <Route path="/insights" element={<InsightsScreen />} />
       </Routes>
       {!hideNav && <BottomNav />}

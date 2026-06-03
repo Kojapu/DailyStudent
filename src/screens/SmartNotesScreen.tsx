@@ -41,7 +41,7 @@ type AnalysisStatus = 'idle' | 'analyzing' | 'done' | 'error'
 export function SmartNotesScreen() {
   const { id, lessonId } = useParams<{ id: string; lessonId: string }>()
   const navigate = useNavigate()
-  const { generatedNotes, userNotes, saveGeneratedNote, updateUserNote, saveFlashCards } = useUser()
+  const { generatedNotes, userNotes, completedHomeworkIds, saveGeneratedNote, updateUserNote, saveFlashCards } = useUser()
 
   const subject = subjects.find((s) => s.id === id)
   const mockLesson = lessons.find((l) => l.id === lessonId)
@@ -426,6 +426,50 @@ export function SmartNotesScreen() {
           >
             <p className="text-text-muted text-sm">+ Mitschrift hinzufügen</p>
           </button>
+        )}
+
+        {/* Hausaufgaben */}
+        {userNote?.homeworkItems && userNote.homeworkItems.length > 0 && (
+          <CollapsibleSection
+            title="📚 Hausaufgaben"
+            badge={
+              <span className="text-xs px-1.5 py-0.5 rounded bg-surface-hover text-text-muted font-medium">
+                {userNote.homeworkItems.length}
+              </span>
+            }
+          >
+            <div className="space-y-2">
+              {userNote.homeworkItems.map((hw, idx) => {
+                const hwId = hw.id ?? `${userNote.id}-hw-${idx}`
+                const isDone = completedHomeworkIds.includes(hwId)
+                return (
+                  <div key={hwId} className="bg-background border border-border rounded-card px-3 py-2.5 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`text-sm leading-snug flex-1 ${isDone ? 'line-through text-text-muted' : 'text-text-primary'}`}>
+                        {hw.description}
+                      </p>
+                      {isDone && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap shrink-0" style={{ backgroundColor: 'rgba(48,209,88,0.12)', color: '#30D158' }}>
+                          ✓ Erledigt
+                        </span>
+                      )}
+                    </div>
+                    {hw.dueDate && (
+                      <p className="text-xs text-text-muted">
+                        Fällig: {new Date(hw.dueDate + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
+                    )}
+                    {hw.aiHelp && (
+                      <div className="mt-1.5 px-3 py-2 rounded-btn" style={{ backgroundColor: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.15)' }}>
+                        <p className="text-xs font-semibold text-accent mb-0.5">KI-Hilfe</p>
+                        <p className="text-xs text-text-secondary leading-relaxed">{hw.aiHelp}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </CollapsibleSection>
         )}
 
         {/* KI-Zusammenfassung */}

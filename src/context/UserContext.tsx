@@ -98,6 +98,7 @@ interface UserContextValue {
   saveFlashCards: (newCards: FlashCard[]) => void
   addKlausurtermin: (termin: KlausurTermin) => void
   removeKlausurtermin: (subjectId: string, date: string) => void
+  applyFaecherChanges: (newFaecher: string[], deletedFaecherIds: string[]) => void
   completedHomeworkIds: string[]
   standaloneHomework: StandaloneHomeworkItem[]
   completeHomework: (id: string) => void
@@ -433,6 +434,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
     persist(profile, personalEntries, generatedNotes, updatedNotes, updatedFolders)
   }
 
+  const applyFaecherChanges = (newFaecher: string[], deletedFaecherIds: string[]) => {
+    if (!profile) return
+    // Collect folder IDs that belong to deleted subjects
+    const deletedFolderIds = new Set(
+      userFolders.filter((f) => deletedFaecherIds.includes(f.subjectId)).map((f) => f.id)
+    )
+    const updatedFolders = userFolders.filter((f) => !deletedFolderIds.has(f.id))
+    const updatedNotes = userNotes.filter(
+      (n) => !deletedFaecherIds.includes(n.subjectId ?? '') && !deletedFolderIds.has(n.folderId ?? '')
+    )
+    // Generate folders for newly added subjects only
+    const addedSubjects = newFaecher.filter((id) => !profile.faecher.includes(id))
+    const newFolders = addedSubjects.length > 0
+      ? generateDefaultFolders({ ...profile, faecher: addedSubjects })
+      : []
+    const finalFolders = [...updatedFolders, ...newFolders]
+    const updatedProfile = { ...profile, faecher: newFaecher }
+    setProfile(updatedProfile)
+    setUserFolders(finalFolders)
+    setUserNotes(updatedNotes)
+    persist(updatedProfile, personalEntries, generatedNotes, updatedNotes, finalFolders)
+  }
+
   return (
     <UserContext.Provider
       value={{
@@ -457,6 +481,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         updateUserNote,
         addFolder,
         deleteFolder,
+        applyFaecherChanges,
         saveToOhneFachFolder,
         saveFlashCards,
         addKlausurtermin,

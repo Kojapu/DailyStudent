@@ -109,8 +109,8 @@ function buildChartLines(halbjahre: AbiHalbjahr[], faecher: string[]): ChartLine
 function GradeChart({ lines, zielnoteNP }: { lines: ChartLine[]; zielnoteNP: number | null }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
-  const W = 310, H = 130
-  const PL = 22, PR = 36, PT = 10, PB = 22
+  const W = 310, H = 148
+  const PL = 30, PR = 36, PT = 12, PB = 30
   const cW = W - PL - PR
   const cH = H - PT - PB
 
@@ -167,24 +167,24 @@ function GradeChart({ lines, zielnoteNP }: { lines: ChartLine[]; zielnoteNP: num
       </div>
 
       {/* SVG chart */}
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ height: 130 }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ height: 148 }}>
         {/* Grid lines */}
         {[5, 10].map((np) => (
           <line
             key={np}
             x1={PL} y1={yPos(np)} x2={W - PR} y2={yPos(np)}
-            stroke="var(--color-border)" strokeWidth="0.6" strokeDasharray="3 3"
+            strokeWidth="0.6" strokeDasharray="3 3" style={{ stroke: 'rgb(var(--color-border))' }}
           />
         ))}
         {/* Y-axis labels */}
         {[0, 5, 10, 15].map((np) => (
-          <text key={np} x={PL - 3} y={yPos(np) + 3.5} fontSize="8" textAnchor="end" fill="var(--color-text-muted)">
+          <text key={np} x={PL - 6} y={yPos(np) + 3.5} fontSize="8" textAnchor="end" style={{ fill: 'rgb(var(--color-text-muted))' }}>
             {np}
           </text>
         ))}
         {/* X-axis labels */}
         {QUARTERS.map((q, i) => (
-          <text key={q} x={xPos(i)} y={H - 4} fontSize="9" textAnchor="middle" fill="var(--color-text-muted)">
+          <text key={q} x={xPos(i)} y={PT + cH + 14} fontSize="9" textAnchor="middle" style={{ fill: 'rgb(var(--color-text-muted))' }}>
             {q}
           </text>
         ))}
@@ -219,14 +219,14 @@ function GradeChart({ lines, zielnoteNP }: { lines: ChartLine[]; zielnoteNP: num
                   <circle
                     key={i} cx={xPos(i)} cy={yPos(d.np)}
                     r={isSelected ? 3.5 : 2.5}
-                    fill={l.color} stroke="var(--color-surface)" strokeWidth="1"
+                    fill={l.color} strokeWidth="1" style={{ stroke: 'rgb(var(--color-surface))' }}
                   />
                 ) : null,
               )}
               {isSelected && lastIdx >= 0 && l.data[lastIdx].np !== null && (
                 <text
                   x={xPos(lastIdx)} y={yPos(l.data[lastIdx].np!) - 7}
-                  fontSize="9" textAnchor="middle" fill={l.color} fontWeight="600"
+                  fontSize="9" textAnchor="middle" fontWeight="600" style={{ fill: 'rgb(var(--color-text-primary))' }}
                 >
                   {npToLabel(l.data[lastIdx].np!)}
                 </text>

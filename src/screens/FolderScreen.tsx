@@ -153,6 +153,9 @@ export function FolderScreen() {
                   <Badge color="muted">{note.attachments!.length === 1 ? 'Foto' : `${note.attachments!.length} Fotos`}</Badge>
                 )}
                 {note.content && <Badge color="accent">Notiz</Badge>}
+                {(note.homeworkItems?.length ?? 0) > 0 && (
+                  <Badge color="warning">{note.homeworkItems!.length === 1 ? 'Hausaufgabe' : `${note.homeworkItems!.length} Hausaufgaben`}</Badge>
+                )}
               </div>
               {note.content ? (
                 <p className="text-text-muted text-[13px] mt-1 truncate">{note.content}</p>
