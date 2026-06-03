@@ -212,17 +212,20 @@ export function KlausurphasenScreen() {
               onClick={() => navigate(totalCards > 0 ? '/klausurmodus/lernen' : '/klausurmodus/karteikarten/neu')}
               className="flex-1 aspect-square bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col justify-between text-left press"
             >
-              <GradientIcon gradient={G.karteikarten}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="7" y="7" width="13" height="12" rx="2.5" strokeOpacity="0.5" />
-                  <rect x="4" y="9" width="13" height="12" rx="2.5" />
-                  <line x1="7" y1="14" x2="14" y2="14" />
-                  <line x1="7" y1="16.5" x2="14" y2="16.5" />
-                  <line x1="7" y1="19" x2="11" y2="19" />
-                  <path d="M9 9.5 L9 5.5 Q9 3.5 11 3.5 Q13 3.5 13 5.5 L13 9.5 Q13 11 11 11 Q9 11 9 9.5 Z" strokeWidth="1.4" />
-                  <path d="M11 9.5 L11 6.5 Q11 5.2 11.8 4.8" strokeWidth="1.4" />
-                </svg>
-              </GradientIcon>
+              <div className="flex items-start justify-between w-full">
+                <GradientIcon gradient={G.karteikarten}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="7" y="7" width="13" height="12" rx="2.5" strokeOpacity="0.5" />
+                    <rect x="4" y="9" width="13" height="12" rx="2.5" />
+                    <line x1="7" y1="14" x2="14" y2="14" />
+                    <line x1="7" y1="16.5" x2="14" y2="16.5" />
+                    <line x1="7" y1="19" x2="11" y2="19" />
+                    <path d="M9 9.5 L9 5.5 Q9 3.5 11 3.5 Q13 3.5 13 5.5 L13 9.5 Q13 11 11 11 Q9 11 9 9.5 Z" strokeWidth="1.4" />
+                    <path d="M11 9.5 L11 6.5 Q11 5.2 11.8 4.8" strokeWidth="1.4" />
+                  </svg>
+                </GradientIcon>
+                <Chevron />
+              </div>
               <div>
                 <p className="text-text-primary font-bold text-[15px] leading-tight">Karteikarten</p>
                 <p className="text-[12px] font-medium mt-0.5" style={{ color: '#7C3AED' }}>
@@ -236,15 +239,18 @@ export function KlausurphasenScreen() {
               onClick={() => navigate('/klausurmodus/blurting')}
               className="flex-1 aspect-square bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col justify-between text-left press"
             >
-              <GradientIcon gradient={G.blurting}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="2" width="12" height="16" rx="2" />
-                  <line x1="6" y1="7" x2="12" y2="7" />
-                  <line x1="6" y1="10" x2="12" y2="10" />
-                  <line x1="6" y1="13" x2="9.5" y2="13" />
-                  <path d="M11 15 L19 7 Q20.5 5.5 21.5 6.5 Q22.5 7.5 21 9 L13 17 L10.5 17.5 Z" strokeWidth="1.5" />
-                </svg>
-              </GradientIcon>
+              <div className="flex items-start justify-between w-full">
+                <GradientIcon gradient={G.blurting}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="2" width="12" height="16" rx="2" />
+                    <line x1="6" y1="7" x2="12" y2="7" />
+                    <line x1="6" y1="10" x2="12" y2="10" />
+                    <line x1="6" y1="13" x2="9.5" y2="13" />
+                    <path d="M11 15 L19 7 Q20.5 5.5 21.5 6.5 Q22.5 7.5 21 9 L13 17 L10.5 17.5 Z" strokeWidth="1.5" />
+                  </svg>
+                </GradientIcon>
+                <Chevron />
+              </div>
               <div>
                 <p className="text-text-primary font-bold text-[15px] leading-tight">Blurting</p>
                 <p className="text-[12px] font-medium mt-0.5 leading-tight" style={{ color: '#60A5FA' }}>

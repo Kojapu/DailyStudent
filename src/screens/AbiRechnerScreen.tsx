@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
@@ -115,73 +115,38 @@ function WheelPicker({
   value: number | null
   onChange: (v: number) => void
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null)
   const [local, setLocal] = useState(value ?? 10)
-  const [sidePad, setSidePad] = useState<number | null>(null)
-  const programmatic = useRef(false)
+  const [dragOffset, setDragOffset] = useState(0)
+  const isDragging = useRef(false)
+  const dragStart = useRef({ x: 0, value: 0 })
 
-  // Read the actual rendered viewport width to compute exact pixel side padding.
-  // Using % in paddingLeft on the flex content div produces unreliable results
-  // in a flex-1 column, so we measure once after mount and use integer pixels.
-  useLayoutEffect(() => {
-    if (scrollRef.current) {
-      const w = scrollRef.current.clientWidth
-      setSidePad(Math.max(0, Math.floor(w / 2 - CELL_W / 2)))
-    }
-  }, [])
-
-  // Scroll to initial position after padding is applied (sidePad changes from null → value)
+  // Sync when the parent changes value externally (e.g. +/- buttons)
   useEffect(() => {
-    if (sidePad === null) return
-    programmatic.current = true
-    if (scrollRef.current) scrollRef.current.scrollLeft = (value ?? 10) * CELL_W
-    setTimeout(() => { programmatic.current = false }, 50)
-  }, [sidePad]) // eslint-disable-line
-
-  // Sync to external value changes
-  useEffect(() => {
-    if (value !== null && value !== local) {
-      setLocal(value)
-      programmatic.current = true
-      scrollRef.current?.scrollTo({ left: value * CELL_W, behavior: 'smooth' })
-      setTimeout(() => { programmatic.current = false }, 350)
-    }
+    if (value !== null && value !== local) setLocal(value)
   }, [value]) // eslint-disable-line
 
-  const onScroll = () => {
-    if (programmatic.current || !scrollRef.current) return
-    const v = Math.max(0, Math.min(15, Math.round(scrollRef.current.scrollLeft / CELL_W)))
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    isDragging.current = true
+    dragStart.current = { x: e.clientX, value: local }
+    setDragOffset(0)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging.current) return
+    const dx = e.clientX - dragStart.current.x
+    const rawV = dragStart.current.value - dx / CELL_W
+    const v = Math.max(0, Math.min(15, Math.round(rawV)))
+    // Sub-cell pixel offset for smooth visual during drag
+    const clampedRaw = Math.max(0, Math.min(15, rawV))
+    const frac = (clampedRaw - Math.round(clampedRaw)) * CELL_W
+    setDragOffset(frac)
     if (v !== local) { setLocal(v); onChange(v) }
   }
 
-  // Mouse drag — lets PC users click-and-drag the wheel left/right
-  const onMouseDown = (e: React.MouseEvent) => {
-    const el = scrollRef.current
-    if (!el) return
-    e.preventDefault()
-    const startX = e.clientX
-    const startLeft = el.scrollLeft
-    el.style.cursor = 'grabbing'
-
-    const onMove = (ev: MouseEvent) => {
-      el.scrollLeft = startLeft + (startX - ev.clientX)
-    }
-
-    const onUp = () => {
-      el.style.cursor = 'grab'
-      // Snap to nearest value and commit
-      const v = Math.max(0, Math.min(15, Math.round(el.scrollLeft / CELL_W)))
-      programmatic.current = true
-      el.scrollTo({ left: v * CELL_W, behavior: 'smooth' })
-      setTimeout(() => { programmatic.current = false }, 350)
-      setLocal(v)
-      onChange(v)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+  const onPointerUp = () => {
+    isDragging.current = false
+    setDragOffset(0) // snap to exact position with CSS transition
   }
 
   const color = getValueColor(local)
@@ -189,71 +154,65 @@ function WheelPicker({
 
   return (
     <div className="w-full select-none">
-      {/* Wheel track — no top number; center cell is visually bigger */}
-      <div className="relative" style={{ height: 48 }}>
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          onMouseDown={onMouseDown}
-          className="h-full"
-          style={{
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch',
-            cursor: 'grab',
-          } as CSSProperties}
-        >
-          <div
-            className="flex h-full items-stretch"
-            style={{
-              paddingLeft: sidePad ?? 80,
-              paddingRight: sidePad ?? 80,
-            }}
-          >
-            {Array.from({ length: 16 }, (_, i) => {
-              const dist = Math.abs(i - local)
-              const isCenter = dist === 0
-              const c = getValueColor(i)
-              return (
-                <div
-                  key={i}
-                  className="shrink-0 flex flex-col items-center justify-center"
-                  style={{ width: CELL_W, scrollSnapAlign: 'center', gap: 3 }}
-                >
-                  {/* Wheel spoke */}
-                  <div
-                    style={{
-                      width: 1.5,
-                      height: isCenter ? 13 : dist === 1 ? 8 : 5,
-                      borderRadius: 1,
-                      background: isCenter
-                        ? (isSet ? color : 'rgb(var(--color-text-secondary))')
-                        : 'rgba(var(--color-border), 1)',
-                      opacity: isCenter ? 1 : dist === 1 ? 0.6 : dist === 2 ? 0.35 : 0.15,
-                      flexShrink: 0,
-                    }}
-                  />
-                  {/* Number — selected cell is noticeably larger */}
-                  <span
-                    style={{
-                      fontSize: isCenter ? 20 : dist === 1 ? 12 : 10,
-                      fontWeight: isCenter ? 900 : 700,
-                      color: isSet ? c : (isCenter ? 'rgb(var(--color-text-primary))' : 'rgb(var(--color-text-muted))'),
-                      opacity: isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.27 : 0.1,
-                      lineHeight: 1,
-                      transition: 'font-size 0.08s ease',
-                    }}
-                  >
-                    {i}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+      <div
+        className="relative overflow-hidden touch-none"
+        style={{ height: 48, cursor: 'grab' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        {Array.from({ length: 16 }, (_, i) => {
+          const xOffset = (i - local) * CELL_W + dragOffset
+          // Don't render items that are far outside the visible area
+          if (Math.abs(xOffset) > 180) return null
+          const dist = Math.abs(i - local)
+          const isCenter = dist === 0
+          const c = getValueColor(i)
+          return (
+            <div
+              key={i}
+              className="absolute flex flex-col items-center justify-center"
+              style={{
+                width: CELL_W,
+                top: 0,
+                bottom: 0,
+                // CSS calc(50%) centers the selected item without any JS measurement
+                left: 'calc(50% - 13px)',
+                transform: `translateX(${xOffset}px)`,
+                transition: isDragging.current ? 'none' : 'transform 0.12s ease-out',
+                gap: 3,
+              }}
+            >
+              {/* Wheel spoke */}
+              <div
+                style={{
+                  width: 1.5,
+                  height: isCenter ? 13 : dist === 1 ? 8 : 5,
+                  borderRadius: 1,
+                  background: isCenter
+                    ? (isSet ? color : 'rgb(var(--color-text-secondary))')
+                    : 'rgba(var(--color-border), 1)',
+                  opacity: isCenter ? 1 : dist === 1 ? 0.6 : dist === 2 ? 0.35 : 0.15,
+                  flexShrink: 0,
+                }}
+              />
+              {/* Number — selected cell is noticeably larger */}
+              <span
+                style={{
+                  fontSize: isCenter ? 20 : dist === 1 ? 12 : 10,
+                  fontWeight: isCenter ? 900 : 700,
+                  color: isSet ? c : (isCenter ? 'rgb(var(--color-text-primary))' : 'rgb(var(--color-text-muted))'),
+                  opacity: isCenter ? 1 : dist === 1 ? 0.5 : dist === 2 ? 0.27 : 0.1,
+                  lineHeight: 1,
+                  transition: 'font-size 0.08s ease',
+                }}
+              >
+                {i}
+              </span>
+            </div>
+          )
+        })}
 
         {/* Edge fades */}
         <div

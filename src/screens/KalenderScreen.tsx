@@ -8,6 +8,15 @@ import type { StandaloneHomeworkItem } from '../context/UserContext'
 import { totalPunkteAllHalbjahre, pktToNoteAbi, noteColorAbi } from './AbiRechnerScreen'
 import { parseStundenplanFromImage } from '../lib/groq'
 
+function getCurrentStreak(streak: number, lastStudyDate: string | null): number {
+  if (!lastStudyDate) return 0
+  const today = new Date().toISOString().slice(0, 10)
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  return lastStudyDate === today || lastStudyDate === yesterday.toISOString().slice(0, 10)
+    ? streak : 0
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const DAY_LABELS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
@@ -113,7 +122,8 @@ function CloseIcon({ size = 14 }: { size?: number }) {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function KalenderScreen() {
-  const { profile, personalEntries, addEntry, removeEntry, updateProfile, addKlausurtermin, userNotes, completedHomeworkIds, standaloneHomework } = useUser()
+  const { profile, personalEntries, addEntry, removeEntry, updateProfile, addKlausurtermin, userNotes, completedHomeworkIds, standaloneHomework, appStats } = useUser()
+  const activeStreak = getCurrentStreak(appStats.streak, appStats.lastStudyDate)
 
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const todayStr = toDateStr(today)
@@ -219,7 +229,10 @@ export function KalenderScreen() {
               {getGreeting(profile?.name ?? 'Max')}
             </h1>
           </div>
-          <span className="mt-2 text-[13px] px-3 py-1.5 rounded-pill bg-warning/10 text-warning font-semibold">🔥 12</span>
+          <span className="mt-1 shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-pill bg-warning/10 text-warning font-bold text-[13px] whitespace-nowrap">
+            <span>🔥</span>
+            <span>{activeStreak}</span>
+          </span>
         </div>
       </div>
 
@@ -1265,7 +1278,7 @@ function StundenplanTodayWidget({ stundenplan, onOpen }: { stundenplan: Stundenp
   return (
     <button
       onClick={onOpen}
-      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm"
+      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm text-left"
       style={{ minHeight: 152 }}
     >
       {/* Icon + Name */}
@@ -1323,7 +1336,7 @@ function StundenplanSetupCard({ onSetup }: { onSetup: () => void }) {
   return (
     <button
       onClick={onSetup}
-      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm"
+      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm text-left"
       style={{ minHeight: 152 }}
     >
       <div className="flex items-center gap-2.5 px-3.5 pt-3.5">
@@ -1363,7 +1376,7 @@ function HausaufgabenWidget({ userNotes, completedHomeworkIds, standaloneHomewor
   return (
     <button
       onClick={() => navigate('/hausaufgaben')}
-      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm"
+      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm text-left"
       style={{ minHeight: 152 }}
     >
       <div className="flex items-center gap-2.5 px-3.5 pt-3.5">
@@ -1603,7 +1616,7 @@ function KlausurterminWidget({ klausurtermine }: { klausurtermine: KlausurTermin
   return (
     <button
       onClick={() => navigate('/klausuren')}
-      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm"
+      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm text-left"
       style={{ minHeight: 152 }}
     >
       <div className="flex items-center gap-2.5 px-3.5 pt-3.5">
@@ -1659,7 +1672,7 @@ function AbiRechnerWidget({ abiHalbjahre, zielnote }: { abiHalbjahre?: AbiHalbja
   return (
     <button
       onClick={() => navigate('/abi-rechner')}
-      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm"
+      className="flex flex-col bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden press-sm text-left"
       style={{ minHeight: 152 }}
     >
       <div className="flex items-center gap-2.5 px-3.5 pt-3.5">

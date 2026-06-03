@@ -77,8 +77,15 @@ function ThemeApplier() {
 }
 
 function Layout() {
-  const { isOnboarded } = useUser()
+  const { isOnboarded, recordStudyDay } = useUser()
   const location = useLocation()
+
+  // Record every calendar day the user opens the app as a study day.
+  // recordStudyDay is idempotent for the same calendar day, so this is safe
+  // to call on every mount / every time onboarding completes.
+  useEffect(() => {
+    if (isOnboarded) recordStudyDay()
+  }, [isOnboarded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOnboarded) {
     return <OnboardingScreen />

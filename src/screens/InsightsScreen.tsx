@@ -365,6 +365,65 @@ function selectTips(ctx: TipCtx): TipDef[] {
   return [...contextTips, ...rotated.slice(0, needed)]
 }
 
+// ── Subject Bar Chart ──────────────────────────────────────────────────────
+
+interface BarItem {
+  subjectId: string
+  info: { name: string; icon: string; color: string }
+  np: number
+}
+
+function SubjectBarChart({ items }: { items: BarItem[] }) {
+  const BAR_MAX = 80
+
+  if (items.length === 0) {
+    return (
+      <div className="py-4 text-center">
+        <p className="text-text-muted text-[13px]">Noch keine Noten im Abi-Rechner eingetragen</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto -mx-1 px-1">
+      <div className="flex gap-2 pt-1" style={{ minWidth: items.length * 44 }}>
+        {items.map((s) => {
+          const barH = Math.max(2, Math.round((s.np / 15) * BAR_MAX))
+          const c = npToBarColor(s.np)
+          return (
+            <div
+              key={s.subjectId}
+              className="flex flex-col items-center shrink-0"
+              style={{ flex: '1 0 36px', maxWidth: 56 }}
+            >
+              {/* Fixed-height bar area — bar anchors to bottom via justify-end */}
+              <div
+                className="flex flex-col justify-end items-center w-full"
+                style={{ height: BAR_MAX + 18 }}
+              >
+                <span className="text-[10px] font-bold mb-1 leading-none" style={{ color: c }}>
+                  {s.np}
+                </span>
+                <div
+                  className="rounded-t-[4px]"
+                  style={{ height: barH, background: c, width: 'calc(100% - 6px)', minWidth: 20 }}
+                />
+              </div>
+              {/* Baseline */}
+              <div className="w-full h-px" style={{ background: 'rgba(var(--color-border), 0.7)' }} />
+              {/* Subject icon + grade label */}
+              <span className="text-[18px] leading-none mt-1.5">{s.info.icon}</span>
+              <span className="text-[9px] font-semibold mt-0.5" style={{ color: c }}>
+                {npToLabel(s.np)}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Screen ────────────────────────────────────────────────────────────
 
 export function InsightsScreen() {
@@ -377,6 +436,11 @@ export function InsightsScreen() {
   const abiGesamtnote = profile?.abiGesamtnote
 
   const activeStreak = getCurrentStreak(appStats.streak, appStats.lastStudyDate)
+
+  const totalPhotos = useMemo(
+    () => userNotes.reduce((acc, n) => acc + (n.attachments?.length ?? 0), 0),
+    [userNotes],
+  )
 
   // Chart
   const chartLines = useMemo(() => buildChartLines(halbjahre, faecher), [halbjahre, faecher])
@@ -404,6 +468,15 @@ export function InsightsScreen() {
         return (b.np as number) - (a.np as number)
       }),
     [subjectGrades],
+  )
+
+  // Bar chart items — subjects with a grade, sorted best → worst
+  const barChartItems = useMemo(
+    () =>
+      sortedGrades
+        .filter((s) => s.np !== null)
+        .map((s) => ({ subjectId: s.subjectId, info: s.info, np: s.np as number })),
+    [sortedGrades],
   )
 
   // Upcoming exams
@@ -493,7 +566,7 @@ export function InsightsScreen() {
           {([
             { icon: '🔥', value: activeStreak.toString(), unit: 'Tage', label: 'Streak', color: '#FF9500' },
             { icon: '📝', value: userNotes.length.toString(), unit: '', label: 'Notizen', color: '#6366F1' },
-            { icon: '📸', value: appStats.scanCount.toString(), unit: '', label: 'Scans', color: '#38BDF8' },
+            { icon: '📸', value: totalPhotos.toString(), unit: '', label: 'Fotos', color: '#38BDF8' },
             { icon: '⭐', value: abiGesamtnote ?? '—', unit: '', label: 'Ø Note', color: '#34C759' },
           ] as const).map((s) => (
             <div key={s.label} className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4">
@@ -647,6 +720,17 @@ export function InsightsScreen() {
             </div>
           )}
         </div>
+
+        {/* ── Fachvergleich ─────────────────────────────────────────────── */}
+        {barChartItems.length > 0 && (
+          <div className="bg-surface rounded-card shadow-card-adaptive border border-border/60 p-5">
+            <div className="mb-4">
+              <p className="text-text-primary font-bold text-[16px]">Fachvergleich</p>
+              <p className="text-text-muted text-[12px] mt-0.5">Aktuelle NP aller Fächer im Überblick</p>
+            </div>
+            <SubjectBarChart items={barChartItems} />
+          </div>
+        )}
 
         {/* ── Nächste Klausuren ─────────────────────────────────────────── */}
         {upcomingExams.length > 0 && (
