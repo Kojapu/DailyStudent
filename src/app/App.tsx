@@ -51,6 +51,7 @@ import { InsightsScreen } from '../screens/InsightsScreen'
 import { FaecherEditScreen } from '../screens/FaecherEditScreen'
 import { LernzettelScreen } from '../screens/LernzettelScreen'
 import { LernzettelGeneratorScreen } from '../screens/LernzettelGeneratorScreen'
+import { ProbeklausurRetroScreen } from '../screens/ProbeklausurRetroScreen'
 
 function ThemeApplier() {
   const { theme } = useUser()
@@ -126,6 +127,7 @@ function Layout() {
         <Route path="/klausurmodus/klausur" element={<ExamModeScreen />} />
         <Route path="/klausurmodus/klausur/ergebnis" element={<ExamResultScreen />} />
         <Route path="/klausurmodus/probeklausur" element={<ProbeklausurMenuScreen />} />
+        <Route path="/klausurmodus/probeklausur/retrospektive" element={<ProbeklausurRetroScreen />} />
         <Route path="/klausurmodus/probeklausur/afb-trainer" element={<ProbeklausurMode1Screen />} />
         <Route path="/klausurmodus/probeklausur/vollstaendige-klausur" element={<ProbeklausurMode2Screen />} />
         <Route path="/klausurmodus/probeklausur/materialklausur" element={<ProbeklausurMode3Screen />} />

@@ -428,7 +428,7 @@ function SubjectBarChart({ items }: { items: BarItem[] }) {
 
 export function InsightsScreen() {
   const navigate = useNavigate()
-  const { profile, appStats, userNotes, generatedFlashCards } = useUser()
+  const { profile, appStats, userNotes, generatedFlashCards, savedProbeklausuren } = useUser()
 
   const halbjahre = profile?.abiHalbjahre ?? []
   const faecher = profile?.faecher ?? []
@@ -888,6 +888,93 @@ export function InsightsScreen() {
             ))}
           </div>
         </div>
+
+        {/* ── Klausurergebnisse ──────────────────────────────────────────── */}
+        {savedProbeklausuren.length > 0 && (() => {
+          const recent = [...savedProbeklausuren]
+            .sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+            .slice(0, 5)
+
+          // Per-subject last 2 scores for trend
+          const subjectScores: Record<string, number[]> = {}
+          for (const pk of [...savedProbeklausuren].sort((a, b) => a.completedAt.localeCompare(b.completedAt))) {
+            if (!subjectScores[pk.subjectId]) subjectScores[pk.subjectId] = []
+            subjectScores[pk.subjectId].push(pk.totalNP)
+          }
+
+          // AFB weakness: average NP < 7 for a given AFB across last 5 exams
+          const afbScores: Record<string, number[]> = { I: [], II: [], III: [] }
+          for (const pk of recent) {
+            for (const t of pk.taskResults) {
+              afbScores[t.afb].push(t.scoreNP)
+            }
+          }
+          const afbAvg = (afb: string) => {
+            const arr = afbScores[afb]
+            return arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null
+          }
+          const weakAfb = (['I', 'II', 'III'] as const).filter((afb) => {
+            const avg = afbAvg(afb)
+            return avg !== null && avg < 7
+          })
+
+          const npColor = (np: number) => {
+            if (np >= 13) return '#34D399'
+            if (np >= 10) return '#60A5FA'
+            if (np >= 7)  return '#FACC15'
+            if (np >= 4)  return '#FB923C'
+            return '#F87171'
+          }
+
+          return (
+            <div>
+              <p className="section-label px-1 mb-2.5">Klausurergebnisse</p>
+
+              {/* Last 5 exams */}
+              <div className="bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive overflow-hidden mb-3">
+                {recent.map((pk, i) => (
+                  <div key={pk.id} className={`flex items-center gap-3 px-4 py-3 ${i < recent.length - 1 ? 'border-b border-border/40' : ''}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[14px] font-semibold text-text-primary truncate">{pk.topic}</p>
+                      <p className="text-[11px] text-text-muted">{pk.subjectName} · {new Date(pk.completedAt).toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })}</p>
+                    </div>
+                    {/* Trend arrow */}
+                    {(() => {
+                      const scores = subjectScores[pk.subjectId] ?? []
+                      const idx = scores.lastIndexOf(pk.totalNP)
+                      if (idx > 0) {
+                        const prev = scores[idx - 1]
+                        const delta = pk.totalNP - prev
+                        if (delta !== 0) return (
+                          <span className="text-[12px] font-semibold" style={{ color: delta > 0 ? '#34D399' : '#F87171' }}>
+                            {delta > 0 ? '↑' : '↓'}{Math.abs(delta)}
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
+                    <div className="px-2.5 py-1 rounded-full text-white text-[12px] font-bold shrink-0 whitespace-nowrap" style={{ background: npColor(pk.totalNP) }}>
+                      {pk.totalNP}/15
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* AFB weakness hint */}
+              {weakAfb.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-[16px] p-4 flex items-start gap-3">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <p className="text-[13px] text-text-secondary leading-snug">
+                    <span className="font-semibold text-amber-400">Schwäche erkannt:</span> AFB {weakAfb.join(' + ')} liegt unter 7 NP — {weakAfb.includes('III') ? 'Analysieren/Bewerten üben' : weakAfb.includes('II') ? 'Anwenden und Transferaufgaben üben' : 'Basiswissen festigen'}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
       </div>
     </div>

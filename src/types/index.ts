@@ -177,6 +177,34 @@ export interface ExamCorrection {
   overallJustification: string
 }
 
+/* ─── Saved Probeklausur ────────────────────────────────────── */
+
+export interface SavedProbeklausurTask {
+  taskId: string
+  label: string
+  taskText: string
+  userAnswer: string
+  afb: 'I' | 'II' | 'III'
+  be: number
+  scoreNP: number
+  errors: string[]
+  gaps: string[]
+  justification: string
+}
+
+export interface SavedProbeklausur {
+  id: string                    // 'pk-{mode}-{subjectId}-{timestamp}'
+  mode: 1 | 2 | 3 | 4
+  subjectId: string
+  subjectName: string
+  topic: string
+  totalNP: number               // 0–15
+  gradeLabel: string
+  taskResults: SavedProbeklausurTask[]
+  overallJustification: string
+  completedAt: string           // ISO
+}
+
 /* ─── App Statistics ────────────────────────────────────────── */
 
 export interface ExamScoreRecord {

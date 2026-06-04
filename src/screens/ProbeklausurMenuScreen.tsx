@@ -86,10 +86,23 @@ export function ProbeklausurMenuScreen() {
           </svg>
           Zurück
         </button>
-        <h1 className="text-[28px] font-bold text-text-primary">Probeklausur</h1>
-        <p className="text-[13px] text-text-muted mt-0.5">
-          KI-generiert · AFB I–III · Abitur-konform
-        </p>
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="text-[28px] font-bold text-text-primary">Probeklausur</h1>
+            <p className="text-[13px] text-text-muted mt-0.5">
+              KI-generiert · AFB I–III · Abitur-konform
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/klausurmodus/probeklausur/retrospektive')}
+            className="flex items-center gap-1.5 text-text-muted text-[13px] font-medium press-sm pb-0.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 8v4l3 3" /><circle cx="12" cy="12" r="10" />
+            </svg>
+            Verlauf
+          </button>
+        </div>
       </div>
 
       <div className="px-5 mt-5 space-y-3">

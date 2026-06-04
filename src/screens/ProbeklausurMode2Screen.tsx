@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
 import { subjects, topics } from '../data/mockData'
 import { generateMode2Exam, correctExam } from '../lib/gemini'
-import type { GeneratedExam, ExamCorrection } from '../types'
+import { BottomSheet } from '../components/ui/BottomSheet'
+import type { GeneratedExam, ExamCorrection, SavedProbeklausur } from '../types'
 
 interface ProbeklausurPrefill {
   subjectId: string
@@ -161,7 +162,7 @@ export function ProbeklausurMode2Screen() {
   const navigate = useNavigate()
   const location = useLocation()
   const prefill = (location.state as { prefill?: ProbeklausurPrefill } | null)?.prefill ?? null
-  const { profile, getKc } = useUser()
+  const { profile, getKc, saveProbeklausur } = useUser()
 
   const userSubjects = subjects.filter((s) => profile?.faecher?.includes(s.id))
   const displaySubjects = userSubjects.length > 0 ? userSubjects : subjects.slice(0, 6)
@@ -174,6 +175,7 @@ export function ProbeklausurMode2Screen() {
   const [correction, setCorrection] = useState<ExamCorrection | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showTimerExpiredBanner, setShowTimerExpiredBanner] = useState(false)
+  const [showExitWarning, setShowExitWarning] = useState(false)
 
   const selectedSubject = subjects.find((s) => s.id === subjectId)
   const subjectTopics = topics.filter((t) => t.subjectId === subjectId).slice(0, 6)
@@ -210,6 +212,22 @@ export function ProbeklausurMode2Screen() {
       const result = await correctExam(exam, answers)
       setCorrection(result)
       setPhase('result')
+      const pk: SavedProbeklausur = {
+        id: `pk-${exam.mode}-${exam.subjectId}-${Date.now()}`,
+        mode: exam.mode,
+        subjectId: exam.subjectId,
+        subjectName: exam.subject,
+        topic: exam.topic,
+        totalNP: result.totalNP,
+        gradeLabel: result.gradeLabel,
+        taskResults: exam.tasks.map((t) => {
+          const c = result.taskCorrections.find((tc) => tc.taskId === t.id)
+          return { taskId: t.id, label: t.label, taskText: t.text, userAnswer: answers[t.id] ?? '', afb: t.afb, be: t.be, scoreNP: c?.scoreNP ?? 0, errors: c?.errors ?? [], gaps: c?.gaps ?? [], justification: c?.justification ?? '' }
+        }),
+        overallJustification: result.overallJustification,
+        completedAt: new Date().toISOString(),
+      }
+      saveProbeklausur(pk)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unbekannter Fehler')
       setPhase('exam')
@@ -222,9 +240,11 @@ export function ProbeklausurMode2Screen() {
       <div className="px-4 pt-12 pb-4 border-b border-border/60 bg-surface/80">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => phase === 'setup' || phase === 'loading'
-              ? navigate('/klausurmodus/probeklausur')
-              : setPhase('setup')}
+            onClick={() => {
+              if (phase === 'setup' || phase === 'loading') { navigate(-1); return }
+              if (phase === 'exam') { setShowExitWarning(true); return }
+              navigate(-1)
+            }}
             className="w-8 h-8 flex items-center justify-center rounded-full bg-background press-sm"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -464,7 +484,7 @@ export function ProbeklausurMode2Screen() {
               Neue Klausur
             </button>
             <button
-              onClick={() => navigate('/klausurmodus/probeklausur')}
+              onClick={() => navigate(-1)}
               className="flex-1 py-4 rounded-[16px] text-white text-[15px] font-bold press"
               style={{ background: ACCENT }}
             >
@@ -473,6 +493,27 @@ export function ProbeklausurMode2Screen() {
           </div>
         )}
       </div>
+
+      <BottomSheet isOpen={showExitWarning} onClose={() => setShowExitWarning(false)}>
+        <div className="px-5 pb-2 space-y-3">
+          <div className="flex flex-col items-center text-center gap-2 pt-2 pb-1">
+            <div className="w-12 h-12 rounded-[16px] flex items-center justify-center" style={{ background: 'linear-gradient(145deg, #FF453A, #C0392B)' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <p className="text-[18px] font-bold text-text-primary">Klausur verlassen?</p>
+            <p className="text-[13px] text-text-secondary leading-snug">Du verlässt gerade eine laufende Klausur.<br />Deine Antworten gehen verloren.</p>
+          </div>
+          <button onClick={() => setShowExitWarning(false)} className="w-full py-3.5 rounded-[16px] font-semibold text-[15px] bg-surface border border-border/60 text-text-primary press">
+            Klausur pausieren
+          </button>
+          <button onClick={() => { setShowExitWarning(false); navigate(-1) }} className="w-full py-3.5 rounded-[16px] font-semibold text-[15px] text-white press mb-2" style={{ background: 'linear-gradient(145deg, #FF453A, #C0392B)' }}>
+            Klausur beenden (Ergebnis gelöscht)
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   )
 }

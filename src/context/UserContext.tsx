@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { type ReactNode } from 'react'
-import type { FlashCard, GeneratedSmartNote, Lernzettel, UserFolder, UserNote, Stundenplan, AbiGradeEntry, AbiHalbjahr, AppStats, ExamScoreRecord } from '../types'
+import type { FlashCard, GeneratedSmartNote, Lernzettel, SavedProbeklausur, UserFolder, UserNote, Stundenplan, AbiGradeEntry, AbiHalbjahr, AppStats, ExamScoreRecord } from '../types'
 import { subjects, topics, halfYears } from '../data/mockData'
 import { loadKcForUser, type KcSubjectData } from '../data/kcLoader'
 
@@ -72,6 +72,7 @@ interface StorageData {
   standaloneHomework?: StandaloneHomeworkItem[]
   appStats?: AppStats
   lernzettel?: Lernzettel[]
+  savedProbeklausuren?: SavedProbeklausur[]
 }
 
 interface UserContextValue {
@@ -115,6 +116,9 @@ interface UserContextValue {
   loadKcData: () => Promise<void>
   lernzettel: Lernzettel[]
   saveLernzettel: (lz: Lernzettel) => void
+  savedProbeklausuren: SavedProbeklausur[]
+  saveProbeklausur: (pk: SavedProbeklausur) => void
+  deleteSavedProbeklausur: (id: string) => void
 }
 
 const STORAGE_KEY = 'lernapp_v1'
@@ -251,6 +255,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [kcCache, setKcCache] = useState<Record<string, KcSubjectData>>({})
   const [kcFallbacks, setKcFallbacks] = useState<string[]>([])
   const [lernzettel, setLernzettel] = useState<Lernzettel[]>(stored.lernzettel ?? [])
+  const [savedProbeklausuren, setSavedProbeklausuren] = useState<SavedProbeklausur[]>(stored.savedProbeklausuren ?? [])
 
   const [userFolders, setUserFolders] = useState<UserFolder[]>(() => {
     if (stored.userFolders && stored.userFolders.length > 0) return stored.userFolders
@@ -447,6 +452,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
     recordStudyDay()
   }
 
+  const saveProbeklausur = (pk: SavedProbeklausur) => {
+    const updated = [...savedProbeklausuren, pk]
+    setSavedProbeklausuren(updated)
+    saveStorage({ ...loadStorage(), savedProbeklausuren: updated })
+    recordExam({ id: pk.id, date: pk.completedAt, subjectId: pk.subjectId, gradeLabel: pk.gradeLabel, totalNP: pk.totalNP, source: 'probeklausur' })
+  }
+
+  const deleteSavedProbeklausur = (id: string) => {
+    const updated = savedProbeklausuren.filter((p) => p.id !== id)
+    setSavedProbeklausuren(updated)
+    saveStorage({ ...loadStorage(), savedProbeklausuren: updated })
+  }
+
   const completeHomework = (id: string) => {
     const updated = [...completedHomeworkIds, id]
     setCompletedHomeworkIds(updated)
@@ -568,6 +586,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         loadKcData,
         lernzettel,
         saveLernzettel,
+        savedProbeklausuren,
+        saveProbeklausur,
+        deleteSavedProbeklausur,
       }}
     >
       {children}
