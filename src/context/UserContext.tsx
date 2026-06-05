@@ -281,7 +281,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     uf: UserFolder[],
     t?: AppTheme,
     pro?: boolean,
-  ) => saveStorage({ profile: p ?? undefined, personalEntries: e, generatedNotes: n, userNotes: un, userFolders: uf, theme: t ?? theme, isPro: pro ?? isPro })
+  ) => saveStorage({ ...loadStorage(), profile: p ?? undefined, personalEntries: e, generatedNotes: n, userNotes: un, userFolders: uf, theme: t ?? theme, isPro: pro ?? isPro })
 
   const setTheme = (t: AppTheme) => {
     setThemeState(t)
