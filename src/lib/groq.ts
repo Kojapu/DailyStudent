@@ -1,7 +1,7 @@
 import type { GeneratedSmartNote, StundenplanSlot } from '../types'
 import { buildKcPromptContext, type KcSubjectData } from '../data/kcLoader'
+import { supabase } from './supabase'
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct'
 const TEXT_MODEL = 'llama-3.3-70b-versatile'
 
@@ -27,9 +27,6 @@ interface GroqResponse {
   choices: { message: { content: string } }[]
 }
 
-interface GroqErrorBody {
-  error?: { message?: string }
-}
 
 function parseRetryAfterMs(errorText: string): number {
   const match = /try again in ([\d.]+)s/i.exec(errorText)
@@ -37,32 +34,27 @@ function parseRetryAfterMs(errorText: string): number {
 }
 
 async function groqFetch(body: Record<string, unknown>): Promise<string> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY as string | undefined
-  if (!apiKey) throw new Error('VITE_GROQ_API_KEY fehlt in .env')
+  const attempt = async () => supabase.functions.invoke('groq-proxy', { body })
 
-  const attempt = async () => fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  let { data, error } = await attempt()
 
-  let res = await attempt()
-
-  if (res.status === 429) {
-    const text = await res.text()
-    const waitMs = parseRetryAfterMs(text)
-    await new Promise((r) => setTimeout(r, waitMs))
-    res = await attempt()
+  if (error) {
+    // 429 retry
+    const msg = error.message ?? ''
+    if (msg.includes('429') || msg.includes('rate')) {
+      const waitMs = parseRetryAfterMs(msg)
+      await new Promise((r) => setTimeout(r, waitMs))
+      const retry = await attempt()
+      data = retry.data
+      error = retry.error
+    }
   }
 
-  if (!res.ok) {
-    const text = await res.text()
-    let msg = `Groq API Fehler ${res.status}`
-    try { msg = (JSON.parse(text) as GroqErrorBody).error?.message ?? msg } catch { /* raw text */ }
-    throw new Error(msg)
-  }
+  if (error) throw new Error(error.message ?? 'Groq Edge Function Fehler')
 
-  return ((await res.json()) as GroqResponse).choices[0].message.content
+  const res = data as GroqResponse
+  if (!res?.choices?.[0]?.message?.content) throw new Error('Unerwartete Antwort von Groq')
+  return res.choices[0].message.content
 }
 
 // Step 1: Foto → Text via Llama 3.2 Vision

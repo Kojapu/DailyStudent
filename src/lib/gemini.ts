@@ -1,8 +1,21 @@
 import type { GeneratedSmartNote, GeneratedExam, ExamCorrection, ProbeklausurTask, ProbeklausurMaterial, TaskCorrection, LernplanDay, LernplanExam, LernplanGeneratorInput } from '../types'
 import { buildKcPromptContext, type KcSubjectData } from '../data/kcLoader'
+import { supabase } from './supabase'
 
-const API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent'
-const EXAM_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+interface GeminiProxyResult {
+  geminiStatus: number
+  geminiData: unknown
+}
+
+async function geminiProxy(
+  model: 'flash' | 'flash-lite',
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<GeminiProxyResult> {
+  const { data, error } = await supabase.functions.invoke('gemini-proxy', { body: { model, body }, signal })
+  if (error) throw new Error(error.message ?? 'Gemini Edge Function Fehler')
+  return data as GeminiProxyResult
+}
 
 interface GeminiJSON {
   title?: string
@@ -37,12 +50,9 @@ export async function analyzeFileToSmartNote(
   subjectName = 'Allgemein',
   signal?: AbortSignal,
 ): Promise<{ generated: GeneratedSmartNote; noteTitle: string }> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-  if (!apiKey) throw new Error('VITE_GEMINI_API_KEY fehlt in .env')
-
   const { base64, mimeType } = await fileToBase64(file)
 
-  const body = {
+  const geminiBody = {
     contents: [{
       parts: [
         { inline_data: { mime_type: mimeType, data: base64 } },
@@ -64,34 +74,24 @@ export async function analyzeFileToSmartNote(
     },
   }
 
-  const attempt = () =>
-    fetch(`${API_URL}?key=${apiKey}`, {
-      method: 'POST',
-      signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+  const makeAttempt = () => geminiProxy('flash-lite', geminiBody, signal)
 
-  let res = await attempt()
+  let result = await makeAttempt()
 
-  // Auto-retry once on rate limit (back off 8 s) — only if not aborted
-  if (res.status === 429 && !signal?.aborted) {
+  if (result.geminiStatus === 429 && !signal?.aborted) {
     await sleep(8000)
-    res = await attempt()
+    result = await makeAttempt()
   }
 
-  if (!res.ok) {
-    let msg = `Gemini Fehler ${res.status}`
-    try {
-      const err = await res.json() as { error?: { message?: string } }
-      msg = err?.error?.message ?? msg
-    } catch { /* raw text */ }
-    if (res.status === 429) msg = 'Rate Limit — wird automatisch wiederholt.'
-    if (res.status === 400) msg = 'Datei konnte nicht verarbeitet werden.'
+  if (result.geminiStatus !== 200) {
+    const errData = result.geminiData as { error?: { message?: string } }
+    let msg = errData?.error?.message ?? `Gemini Fehler ${result.geminiStatus}`
+    if (result.geminiStatus === 429) msg = 'Rate Limit — wird automatisch wiederholt.'
+    if (result.geminiStatus === 400) msg = 'Datei konnte nicht verarbeitet werden.'
     throw new Error(msg)
   }
 
-  const json = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  const json = result.geminiData as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const text = json.candidates?.[0]?.content?.parts?.[0]?.text
   if (!text) throw new Error('Keine Antwort von der KI erhalten.')
 
@@ -127,30 +127,18 @@ export const GEMINI_BATCH_DELAY_MS = 4500
 // ── Probeklausur: Exam Generation & Correction ───────────────────────────────
 
 async function examFetch(systemPrompt: string, userPrompt: string, temperature = 0.6): Promise<unknown> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-  if (!apiKey) throw new Error('VITE_GEMINI_API_KEY fehlt in .env')
-
-  const res = await fetch(`${EXAM_API_URL}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: 8192,
-        responseMimeType: 'application/json',
-      },
-    }),
+  const result = await geminiProxy('flash', {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: { temperature, maxOutputTokens: 8192, responseMimeType: 'application/json' },
   })
 
-  if (!res.ok) {
-    let msg = `Gemini Fehler ${res.status}`
-    try { msg = ((await res.json()) as { error?: { message?: string } }).error?.message ?? msg } catch { /* keep */ }
-    throw new Error(msg)
+  if (result.geminiStatus !== 200) {
+    const errData = result.geminiData as { error?: { message?: string } }
+    throw new Error(errData?.error?.message ?? `Gemini Fehler ${result.geminiStatus}`)
   }
 
-  const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  const data = result.geminiData as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   const cleaned = text.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '').trim()
   if (!cleaned) throw new Error('Gemini hat keine Antwort zurückgegeben')
@@ -369,8 +357,7 @@ export async function suggestImportDestination(
   folders: { id: string; subjectId: string; name: string }[],
   signal?: AbortSignal,
 ): Promise<ImportDestination | null> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-  if (!apiKey || subjects.length === 0) return null
+  if (subjects.length === 0) return null
 
   const { base64, mimeType } = await fileToBase64(file)
 
@@ -386,31 +373,26 @@ export async function suggestImportDestination(
     ? `\n\nWähle auch einen passenden Ordner aus wenn möglich. Antworte mit:\n{"subjectId":"exakte-fach-id","folderId":"exakte-ordner-id","reason":"Begründung"}\nOhne Ordner:\n{"subjectId":"exakte-fach-id","folderId":null,"reason":"Begründung"}`
     : `\n\nAntworte mit:\n{"subjectId":"exakte-fach-id","folderId":null,"reason":"Begründung"}`
 
-  let res: Response
+  let result: GeminiProxyResult
   try {
-    res = await fetch(`${API_URL}?key=${apiKey}`, {
-      method: 'POST',
-      signal,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { inline_data: { mime_type: mimeType, data: base64 } },
-            {
-              text: `Analysiere dieses Dokument und ordne es einem Schulfach zu. Verwende NUR die exakten IDs aus der Liste.\n\nVerfügbare Fächer:\n${subjectList}${folderSection}${folderInstruction}`,
-            },
-          ],
-        }],
-        generationConfig: { response_mime_type: 'application/json', temperature: 0.1, maxOutputTokens: 150 },
-      }),
-    })
+    result = await geminiProxy('flash-lite', {
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mimeType, data: base64 } },
+          {
+            text: `Analysiere dieses Dokument und ordne es einem Schulfach zu. Verwende NUR die exakten IDs aus der Liste.\n\nVerfügbare Fächer:\n${subjectList}${folderSection}${folderInstruction}`,
+          },
+        ],
+      }],
+      generationConfig: { response_mime_type: 'application/json', temperature: 0.1, maxOutputTokens: 150 },
+    }, signal)
   } catch {
-    return null // AbortError or network error — caller handles
+    return null
   }
 
-  if (!res.ok) return null
+  if (result.geminiStatus !== 200) return null
 
-  const json = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  const json = result.geminiData as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const text = json.candidates?.[0]?.content?.parts?.[0]?.text
   if (!text) return null
 
@@ -456,9 +438,6 @@ export async function generateLernplan(input: LernplanGeneratorInput): Promise<{
   days: LernplanDay[]
   examSchedule: LernplanExam[]
 }> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined
-  if (!apiKey) throw new Error('VITE_GEMINI_API_KEY fehlt in .env')
-
   const examsText = [...input.klausurtermine]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((k) => `- ${k.subjectName} (${k.isLK ? 'LK' : 'GK'}): ${k.date}${k.topic ? ' — ' + k.topic : ''}`)
@@ -516,29 +495,24 @@ ${input.kcContext ? `\nKERNCURRICULUM:\n${input.kcContext}` : ''}
 
 Erstelle den vollständigen Plan für ALLE ${input.planDurationDays} Tage ab ${input.startDate}. Jeder Tag muss im days-Array enthalten sein.`
 
-  const lernplanBody = JSON.stringify({
+  const lernplanBodyObj = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 16384, responseMimeType: 'application/json' },
-  })
+  }
 
   // On 503 (model overloaded), fall back to flash-lite immediately
-  let res = await fetch(`${EXAM_API_URL}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: lernplanBody,
-  })
-  if (res.status === 503) {
-    res = await fetch(`${API_URL}?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: lernplanBody,
-    })
+  let result = await geminiProxy('flash', lernplanBodyObj)
+  if (result.geminiStatus === 503) {
+    result = await geminiProxy('flash-lite', lernplanBodyObj)
   }
 
-  if (!res.ok) {
-    let msg = `Gemini Fehler ${res.status}`
-    try { msg = ((await res.json()) as { error?: { message?: string } }).error?.message ?? msg } catch { /* keep */ }
-    throw new Error(msg)
+  if (result.geminiStatus !== 200) {
+    const errData = result.geminiData as { error?: { message?: string } }
+    throw new Error(errData?.error?.message ?? `Gemini Fehler ${result.geminiStatus}`)
   }
 
-  const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
+  const data = result.geminiData as { candidates?: { content?: { parts?: { text?: string }[] } }[] }
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   const cleaned = text.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '').trim()
   if (!cleaned) throw new Error('Gemini hat keinen Lernplan zurückgegeben.')

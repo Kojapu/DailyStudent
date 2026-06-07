@@ -110,8 +110,9 @@ Smart Notes
 4. **KI-API-Calls serverseitig** — Supabase Edge Functions, API-Keys raus aus dem Browser
 5. **Stripe Payments** — Pro-Subscription, Webhook → `subscriptions` Tabelle → `isPro` setzen
 6. **Push-Benachrichtigungen** für Lernplan-Erinnerungen
-7. **Deployment** (Vercel/Netlify)
-8. **Studentenadaption** (Uni-Fächer, kein KC aber Syllabus-Upload)
+7. **Responsive Layouts (iPad + Laptop) — VOR LAUNCH ZWINGEND** — Primäre Zielgruppe nutzt App im Unterricht auf iPad und in Vorlesungen auf Laptop. Handy ist sekundär (immer erreichbar). Umsetzung: Tailwind Breakpoints (`md:` iPad, `lg:` Laptop), Sidebar-Navigation statt BottomNav ab `md:`, 2-Column-Layouts wo sinnvoll. Nach Phase 3 als erste große UI-Iteration.
+8. **Deployment** (Vercel/Netlify)
+9. **Studentenadaption** (Uni-Fächer, kein KC aber Syllabus-Upload)
 
 ---
 
