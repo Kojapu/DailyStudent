@@ -290,7 +290,7 @@ export function LernzettelScreen() {
                   <div className="flex items-center gap-3 p-4 flex-1 min-w-0">
                     {/* Gradient icon */}
                     <div
-                      className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0"
+                      className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0 glow-teal"
                       style={{ background: G_LERNZETTEL }}
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

@@ -284,7 +284,7 @@ const ALL_TIPS: TipDef[] = [
     accentColor: '#6366F1',
     title: (ctx) => `${ctx.weakestName} verbessern`,
     text: () => '5 Karteikarten pro Tag fürs Schwachfach. Kleine, konsistente Einheiten schlagen Marathon-Lernen am Wochenende.',
-    condition: (ctx) => ctx.weakestNP !== null && ctx.weakestNP < 8 && ctx.weakestName !== null,
+    condition: (ctx) => ctx.weakestNP !== null && ctx.weakestNP < 13 && ctx.weakestName !== null,
     priority: 7,
   },
   {
@@ -912,7 +912,7 @@ export function InsightsScreen() {
           }
           const weakAfb = (['I', 'II', 'III'] as const).filter((afb) => {
             const avg = afbAvg(afb)
-            return avg !== null && avg < 7
+            return avg !== null && avg < 13
           })
 
           const npColor = (np: number) => {
@@ -965,7 +965,7 @@ export function InsightsScreen() {
                     <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                   </svg>
                   <p className="text-[13px] text-text-secondary leading-snug">
-                    <span className="font-semibold text-amber-400">Schwäche erkannt:</span> AFB {weakAfb.join(' + ')} liegt unter 7 NP — {weakAfb.includes('III') ? 'Analysieren/Bewerten üben' : weakAfb.includes('II') ? 'Anwenden und Transferaufgaben üben' : 'Basiswissen festigen'}.
+                    <span className="font-semibold text-amber-400">Optimierungspotenzial:</span> AFB {weakAfb.join(' + ')} liegt unter 13 NP — {weakAfb.includes('III') ? 'Analyse- und Bewertungsaufgaben trainieren für volle Punktzahl' : weakAfb.includes('II') ? 'Transferaufgaben üben — hier entscheiden sich die Top-Punkte' : 'Basisaufgaben sichern, damit keine Pflichtpunkte verloren gehen'}.
                   </p>
                 </div>
               )}

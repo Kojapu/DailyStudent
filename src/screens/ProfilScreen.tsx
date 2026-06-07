@@ -171,7 +171,7 @@ export function ProfilScreen() {
           onClick={() => navigate('/insights')}
           className="w-full bg-surface rounded-card shadow-card-adaptive border border-border/60 px-4 py-4 flex items-center gap-3 press"
         >
-          <div className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+          <div className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 glow-indigo"
             style={{ background: 'linear-gradient(145deg, #6366F1, #4C1D95)' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="20" x2="18" y2="10" />
@@ -283,28 +283,42 @@ export function ProfilScreen() {
                 <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
-            {['Bundesland & Lehrplan', 'Benachrichtigungen', 'Datenschutz', 'Account'].map((item, i, arr) => (
-              <button
-                key={item}
-                className={`w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm ${
-                  i < arr.length - 1 ? 'border-b border-border/50' : ''
-                }`}
-              >
-                <span className="text-text-primary text-[15px]">{item}</span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted">
-                  <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            ))}
+            <button
+              onClick={() => navigate('/profil/benachrichtigungen')}
+              className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm border-b border-border/50"
+            >
+              <span className="text-text-primary text-[15px]">Benachrichtigungen</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted">
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => navigate('/profil/datenschutz')}
+              className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm border-b border-border/50"
+            >
+              <span className="text-text-primary text-[15px]">Datenschutz</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted">
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
             <button
               onClick={() => {
                 localStorage.removeItem('lernapp_v1')
                 window.location.reload()
               }}
-              className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm border-t border-border/50"
+              className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm border-b border-border/50"
             >
               <span className="text-danger text-[15px]">Onboarding zurücksetzen</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-danger">
+                <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              onClick={() => navigate('/profil/bundesland')}
+              className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface-hover transition-colors press-sm"
+            >
+              <span className="text-text-primary text-[15px]">Bundesland & Lehrplan</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted">
                 <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>

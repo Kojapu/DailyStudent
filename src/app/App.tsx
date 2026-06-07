@@ -24,6 +24,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
   }
 }
 import { BottomNav } from '../components/ui/BottomNav'
+import { DesktopSidebar, DesktopSidebarWide } from '../components/ui/DesktopSidebar'
 import { UserProvider, useUser } from '../context/UserContext'
 import { OnboardingScreen } from '../screens/OnboardingScreen'
 import { KalenderScreen } from '../screens/KalenderScreen'
@@ -47,12 +48,16 @@ import { AbiRechnerScreen } from '../screens/AbiRechnerScreen'
 import { HausaufgabenheftScreen } from '../screens/HausaufgabenheftScreen'
 import { InsightsScreen } from '../screens/InsightsScreen'
 import { FaecherEditScreen } from '../screens/FaecherEditScreen'
+import { BundeslandScreen } from '../screens/BundeslandScreen'
+import { BenachrichtigungenScreen } from '../screens/BenachrichtigungenScreen'
+import { DatenschutzScreen } from '../screens/DatenschutzScreen'
 import { LernzettelScreen } from '../screens/LernzettelScreen'
 import { LernzettelGeneratorScreen } from '../screens/LernzettelGeneratorScreen'
 import { ProbeklausurRetroScreen } from '../screens/ProbeklausurRetroScreen'
 import { LernplanKonfiguratorScreen } from '../screens/LernplanKonfiguratorScreen'
 import { LernplanDetailScreen } from '../screens/LernplanDetailScreen'
 import { AuthScreen } from '../screens/AuthScreen'
+import { DashboardScreen } from '../screens/DashboardScreen'
 
 function ThemeApplier() {
   const { theme } = useUser()
@@ -79,6 +84,61 @@ function ThemeApplier() {
   }, [theme])
 
   return null
+}
+
+// ── Device detection ─────────────────────────────────────────────────────────
+// User-Agent based: phones have "iPhone"/"iPod" or "Android" + "Mobile" in UA.
+// iPads (all versions), Android tablets, and desktops do NOT match → desktop.
+// Also works in Chrome DevTools device simulation (DevTools changes the UA).
+const IS_DESKTOP = !/iPhone|iPod|(Android.*Mobile)/i.test(navigator.userAgent)
+
+function SmartRedirect() {
+  return <Navigate to={IS_DESKTOP ? '/dashboard' : '/unterricht'} replace />
+}
+
+// All routes extracted into a component so the route tree is always at the
+// same position in the component tree regardless of which layout branch renders.
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<SmartRedirect />} />
+      <Route path="/dashboard" element={<DashboardScreen />} />
+      <Route path="/kalender" element={<KalenderScreen />} />
+      <Route path="/hausaufgaben" element={<HausaufgabenheftScreen />} />
+      <Route path="/klausuren" element={<KlausurplanScreen />} />
+      <Route path="/abi-rechner" element={<AbiRechnerScreen />} />
+      <Route path="/unterricht" element={<UnterrichtScreen />} />
+      <Route path="/unterricht/neue-notiz" element={<NoteCreateScreen />} />
+      <Route path="/unterricht/ohne-fach/ordner/:folderId" element={<FolderScreen />} />
+      <Route path="/unterricht/ohne-fach/ordner/:folderId/neue-notiz" element={<NoteCreateScreen />} />
+      <Route path="/unterricht/ohne-fach/:lessonId" element={<SmartNotesScreen />} />
+      <Route path="/unterricht/:id" element={<LessonScreen />} />
+      <Route path="/unterricht/:id/neue-notiz" element={<NoteCreateScreen />} />
+      <Route path="/unterricht/:id/ordner/:folderId" element={<FolderScreen />} />
+      <Route path="/unterricht/:id/ordner/:folderId/neue-notiz" element={<NoteCreateScreen />} />
+      <Route path="/unterricht/:id/:lessonId" element={<SmartNotesScreen />} />
+      <Route path="/klausurmodus" element={<KlausurphasenScreen />} />
+      <Route path="/klausurmodus/lernen" element={<LearnModeScreen />} />
+      <Route path="/klausurmodus/karteikarten/neu" element={<FlashCardGeneratorScreen />} />
+      <Route path="/klausurmodus/probeklausur" element={<ProbeklausurMenuScreen />} />
+      <Route path="/klausurmodus/probeklausur/retrospektive" element={<ProbeklausurRetroScreen />} />
+      <Route path="/klausurmodus/probeklausur/afb-trainer" element={<ProbeklausurMode1Screen />} />
+      <Route path="/klausurmodus/probeklausur/vollstaendige-klausur" element={<ProbeklausurMode2Screen />} />
+      <Route path="/klausurmodus/probeklausur/materialklausur" element={<ProbeklausurMode3Screen />} />
+      <Route path="/klausurmodus/probeklausur/ohne-material" element={<ProbeklausurMode4Screen />} />
+      <Route path="/klausurmodus/blurting" element={<BlurtingScreen />} />
+      <Route path="/klausurmodus/lernzettel" element={<LernzettelScreen />} />
+      <Route path="/klausurmodus/lernzettel/neu" element={<LernzettelGeneratorScreen />} />
+      <Route path="/klausurmodus/lernplan/neu" element={<LernplanKonfiguratorScreen />} />
+      <Route path="/klausurmodus/lernplan/:id" element={<LernplanDetailScreen />} />
+      <Route path="/profil" element={<ProfilScreen />} />
+      <Route path="/profil/faecher" element={<FaecherEditScreen />} />
+      <Route path="/profil/bundesland" element={<BundeslandScreen />} />
+      <Route path="/profil/benachrichtigungen" element={<BenachrichtigungenScreen />} />
+      <Route path="/profil/datenschutz" element={<DatenschutzScreen />} />
+      <Route path="/insights" element={<InsightsScreen />} />
+    </Routes>
+  )
 }
 
 function Layout() {
@@ -114,42 +174,25 @@ function Layout() {
     location.pathname.startsWith('/klausurmodus/probeklausur/') ||
     location.pathname.startsWith('/klausurmodus/lernplan/')
 
+  // ── Desktop / iPad layout (UA-based: not iPhone / Android phone) ────────────
+  // sidebar uses CSS breakpoints internally for icon-only (md:) vs wide (lg:)
+  // so orientation changes between portrait/landscape are handled correctly.
+  if (IS_DESKTOP) {
+    return (
+      <div className="flex h-screen bg-background overflow-hidden">
+        <DesktopSidebar />
+        <DesktopSidebarWide />
+        <main className="flex-1 overflow-y-auto">
+          <AppRoutes />
+        </main>
+      </div>
+    )
+  }
+
+  // ── Mobile layout (screen.width < 768px) ───────────────────────────────────
   return (
     <div className="max-w-lg mx-auto relative min-h-screen">
-      <Routes>
-        <Route path="/" element={<Navigate to="/unterricht" replace />} />
-        <Route path="/kalender" element={<KalenderScreen />} />
-        <Route path="/hausaufgaben" element={<HausaufgabenheftScreen />} />
-        <Route path="/klausuren" element={<KlausurplanScreen />} />
-        <Route path="/abi-rechner" element={<AbiRechnerScreen />} />
-        <Route path="/unterricht" element={<UnterrichtScreen />} />
-        <Route path="/unterricht/neue-notiz" element={<NoteCreateScreen />} />
-        <Route path="/unterricht/ohne-fach/ordner/:folderId" element={<FolderScreen />} />
-        <Route path="/unterricht/ohne-fach/ordner/:folderId/neue-notiz" element={<NoteCreateScreen />} />
-        <Route path="/unterricht/ohne-fach/:lessonId" element={<SmartNotesScreen />} />
-        <Route path="/unterricht/:id" element={<LessonScreen />} />
-        <Route path="/unterricht/:id/neue-notiz" element={<NoteCreateScreen />} />
-        <Route path="/unterricht/:id/ordner/:folderId" element={<FolderScreen />} />
-        <Route path="/unterricht/:id/ordner/:folderId/neue-notiz" element={<NoteCreateScreen />} />
-        <Route path="/unterricht/:id/:lessonId" element={<SmartNotesScreen />} />
-        <Route path="/klausurmodus" element={<KlausurphasenScreen />} />
-        <Route path="/klausurmodus/lernen" element={<LearnModeScreen />} />
-        <Route path="/klausurmodus/karteikarten/neu" element={<FlashCardGeneratorScreen />} />
-        <Route path="/klausurmodus/probeklausur" element={<ProbeklausurMenuScreen />} />
-        <Route path="/klausurmodus/probeklausur/retrospektive" element={<ProbeklausurRetroScreen />} />
-        <Route path="/klausurmodus/probeklausur/afb-trainer" element={<ProbeklausurMode1Screen />} />
-        <Route path="/klausurmodus/probeklausur/vollstaendige-klausur" element={<ProbeklausurMode2Screen />} />
-        <Route path="/klausurmodus/probeklausur/materialklausur" element={<ProbeklausurMode3Screen />} />
-        <Route path="/klausurmodus/probeklausur/ohne-material" element={<ProbeklausurMode4Screen />} />
-        <Route path="/klausurmodus/blurting" element={<BlurtingScreen />} />
-        <Route path="/klausurmodus/lernzettel" element={<LernzettelScreen />} />
-        <Route path="/klausurmodus/lernzettel/neu" element={<LernzettelGeneratorScreen />} />
-        <Route path="/klausurmodus/lernplan/neu" element={<LernplanKonfiguratorScreen />} />
-        <Route path="/klausurmodus/lernplan/:id" element={<LernplanDetailScreen />} />
-        <Route path="/profil" element={<ProfilScreen />} />
-        <Route path="/profil/faecher" element={<FaecherEditScreen />} />
-        <Route path="/insights" element={<InsightsScreen />} />
-      </Routes>
+      <AppRoutes />
       {!hideNav && <BottomNav />}
     </div>
   )

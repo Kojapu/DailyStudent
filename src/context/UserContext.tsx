@@ -62,6 +62,11 @@ export interface UserProfile {
   abiGesamtpunkte?: number | null  // computed Abi score — synced from AbiRechnerScreen for stats
   abiGesamtnote?: string            // computed Abi grade string — synced from AbiRechnerScreen for stats
   lkFaecher?: string[]
+  notificationPrefs?: {
+    klausurReminder: boolean
+    lernplanReminder: boolean
+    streakReminder: boolean
+  }
 }
 
 export type AppTheme = 'light' | 'dark' | 'system'
@@ -416,8 +421,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const setIsPro = (v: boolean) => {
     setIsProState(v)
-    saveStorage({ ...loadStorage(), isPro: v })
-    if (authUser && profile) void syncProfile(authUser.id, profile, theme, v)
+    // Mark isDevMode so Supabase trusts profiles.is_pro on next load (loadUserDataFromSupabase
+    // only reads is_pro from profiles when is_dev_mode = true; otherwise it uses subscriptions).
+    const devProfile = profile ? { ...profile, isDevMode: true } : profile
+    setProfile(devProfile)
+    saveStorage({ ...loadStorage(), isPro: v, profile: devProfile ?? undefined })
+    if (authUser && devProfile) void syncProfile(authUser.id, devProfile, theme, v)
   }
 
   const loadKcData = useCallback(async (targetProfile?: UserProfile) => {

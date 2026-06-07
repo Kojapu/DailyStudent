@@ -42,10 +42,10 @@ const G = {
   streak:       'linear-gradient(145deg, #FF9F0A, #E07008)',
 }
 
-function GradientIcon({ gradient, children }: { gradient: string; children: React.ReactNode }) {
+function GradientIcon({ gradient, glow, children }: { gradient: string; glow?: string; children: React.ReactNode }) {
   return (
     <div
-      className="w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0"
+      className={`w-12 h-12 rounded-[14px] flex items-center justify-center shrink-0${glow ? ` ${glow}` : ''}`}
       style={{ background: gradient }}
     >
       {children}
@@ -184,7 +184,7 @@ export function KlausurphasenScreen() {
             className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 press"
           >
             <div className="flex items-center gap-4">
-              <GradientIcon gradient={G.lernplan}>
+              <GradientIcon gradient={G.lernplan} glow="glow-gold">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white"
                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -221,7 +221,7 @@ export function KlausurphasenScreen() {
               className="flex-1 aspect-square bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col justify-between text-left press"
             >
               <div className="flex items-start justify-between w-full">
-                <GradientIcon gradient={G.karteikarten}>
+                <GradientIcon gradient={G.karteikarten} glow="glow-purple">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="7" y="7" width="13" height="12" rx="2.5" strokeOpacity="0.5" />
                     <rect x="4" y="9" width="13" height="12" rx="2.5" />
@@ -248,7 +248,7 @@ export function KlausurphasenScreen() {
               className="flex-1 aspect-square bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 flex flex-col justify-between text-left press"
             >
               <div className="flex items-start justify-between w-full">
-                <GradientIcon gradient={G.blurting}>
+                <GradientIcon gradient={G.blurting} glow="glow-pink">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="2" width="12" height="16" rx="2" />
                     <line x1="6" y1="7" x2="12" y2="7" />
@@ -280,7 +280,7 @@ export function KlausurphasenScreen() {
               onClick={() => navigate('/klausurmodus/probeklausur')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press"
             >
-              <GradientIcon gradient={G.probeklausur}>
+              <GradientIcon gradient={G.probeklausur} glow="glow-cyan">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white"
                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -307,7 +307,7 @@ export function KlausurphasenScreen() {
               onClick={() => navigate('/klausurmodus/lernzettel')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press"
             >
-              <GradientIcon gradient={G.lernzettel}>
+              <GradientIcon gradient={G.lernzettel} glow="glow-teal">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white"
                   strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />

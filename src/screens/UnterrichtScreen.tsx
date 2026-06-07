@@ -281,7 +281,7 @@ export function UnterrichtScreen() {
               className="flex-1 bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4 flex flex-col gap-3 hover-lift text-left"
             >
               <div
-                className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 glow-gold"
                 style={{ background: 'linear-gradient(145deg, #F8CE45, #C9891A)' }}
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.8">
@@ -300,7 +300,7 @@ export function UnterrichtScreen() {
               className="flex-1 bg-surface rounded-card shadow-card-adaptive border border-border/60 p-4 flex flex-col gap-3 hover-lift text-left"
             >
               <div
-                className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                className="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 glow-green"
                 style={{ background: 'linear-gradient(145deg, #34C759, #1D9A38)' }}
               >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2">

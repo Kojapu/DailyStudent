@@ -199,23 +199,23 @@ textarea::placeholder {
 @layer utilities {
   .grad-accent {
     background: linear-gradient(145deg, #A78BFA 0%, #7C3AED 55%, #6D28D9 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 10px rgba(109,40,217,0.35);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 3px 12px rgba(109,40,217,0.45), 0 1px 4px rgba(109,40,217,0.25);
   }
   .grad-success {
     background: linear-gradient(145deg, #4ADE80 0%, #22C55E 55%, #15803D 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 10px rgba(21,128,61,0.35);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 3px 12px rgba(21,128,61,0.42), 0 1px 4px rgba(21,128,61,0.22);
   }
   .grad-danger {
     background: linear-gradient(145deg, #F87171 0%, #EF4444 55%, #B91C1C 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 10px rgba(185,28,28,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 3px 12px rgba(185,28,28,0.4), 0 1px 4px rgba(185,28,28,0.2);
   }
   .grad-warning {
     background: linear-gradient(145deg, #FCD34D 0%, #F59E0B 55%, #B45309 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 10px rgba(180,83,9,0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 3px 12px rgba(180,83,9,0.38), 0 1px 4px rgba(180,83,9,0.2);
   }
   .grad-blue {
     background: linear-gradient(145deg, #60A5FA 0%, #3B82F6 55%, #1D4ED8 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 2px 10px rgba(29,78,216,0.35);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 3px 12px rgba(29,78,216,0.42), 0 1px 4px rgba(29,78,216,0.22);
   }
 
   /* Soft tinted icon-container gradients (replaces bg-accent/10 etc.) */
@@ -234,6 +234,19 @@ textarea::placeholder {
   .icon-blue {
     background: linear-gradient(145deg, rgba(147,197,253,0.5) 0%, rgba(29,78,216,0.18) 100%);
   }
+
+  /* ── Colored glow shadows for gradient icon containers ──────── */
+  /* Usage: add as className alongside inline background style     */
+  .glow-purple { box-shadow: 0 4px 16px rgba(124, 58,237,0.38), 0 1px 4px rgba(124, 58,237,0.18); }
+  .glow-pink   { box-shadow: 0 4px 16px rgba(219, 39,119,0.38), 0 1px 4px rgba(219, 39,119,0.18); }
+  .glow-teal   { box-shadow: 0 4px 16px rgba( 90,200,250,0.38), 0 1px 4px rgba( 90,200,250,0.18); }
+  .glow-cyan   { box-shadow: 0 4px 16px rgba(  8,145,178,0.38), 0 1px 4px rgba(  8,145,178,0.18); }
+  .glow-orange { box-shadow: 0 4px 16px rgba(255,159, 10,0.38), 0 1px 4px rgba(255,159, 10,0.18); }
+  .glow-gold   { box-shadow: 0 4px 16px rgba(192,119,  0,0.38), 0 1px 4px rgba(192,119,  0,0.18); }
+  .glow-green  { box-shadow: 0 4px 16px rgba( 52,199, 89,0.38), 0 1px 4px rgba( 52,199, 89,0.18); }
+  .glow-red    { box-shadow: 0 4px 16px rgba(255, 59, 48,0.38), 0 1px 4px rgba(255, 59, 48,0.18); }
+  .glow-blue   { box-shadow: 0 4px 16px rgba(  0,122,255,0.38), 0 1px 4px rgba(  0,122,255,0.18); }
+  .glow-indigo { box-shadow: 0 4px 16px rgba( 99,102,241,0.38), 0 1px 4px rgba( 99,102,241,0.18); }
 }
 
 /* ── Action bar slide-up ────────────────────────────────────── */

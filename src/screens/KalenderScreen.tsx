@@ -122,6 +122,7 @@ function CloseIcon({ size = 14 }: { size?: number }) {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export function KalenderScreen() {
+  const navigate = useNavigate()
   const { profile, personalEntries, addEntry, removeEntry, updateProfile, addKlausurtermin, userNotes, completedHomeworkIds, standaloneHomework, appStats } = useUser()
   const activeStreak = getCurrentStreak(appStats.streak, appStats.lastStudyDate)
 
@@ -430,8 +431,11 @@ export function KalenderScreen() {
           <AbiRechnerWidget abiHalbjahre={profile?.abiHalbjahre} zielnote={profile?.zielnote} />
         </div>
 
-        {/* ── Lernplan Placeholder ─────────────────────────────── */}
-        <div className="bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive p-4 flex items-center gap-4">
+        {/* ── Lernplan ─────────────────────────────────────────── */}
+        <button
+          onClick={() => navigate('/klausurmodus/lernplan/neu')}
+          className="bg-surface border border-border/60 rounded-[20px] shadow-card-adaptive p-4 flex items-center gap-4 w-full text-left press-sm hover:bg-surface-hover transition-colors"
+        >
           <div
             className="w-11 h-11 rounded-[14px] flex items-center justify-center shrink-0"
             style={{ background: 'linear-gradient(145deg,#FFD060,#C07700)', boxShadow: '0 4px 14px rgba(192,119,0,0.4)' }}
@@ -443,9 +447,12 @@ export function KalenderScreen() {
           </div>
           <div className="flex-1">
             <p className="text-text-primary font-bold text-[15px]">Lernplan erstellen</p>
-            <p className="text-text-muted text-[12px] mt-0.5">Kommt bald</p>
+            <p className="text-text-muted text-[12px] mt-0.5">KI-Lernplan für deine Klausuren</p>
           </div>
-        </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
+            <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
         {/* ── KI-Lernvorschlag ─────────────────────────────────── */}
         <section>
