@@ -68,9 +68,12 @@ Deno.serve(async (req) => {
           headers: { 'Authorization': `Bearer ${stripeKey}` },
         })
         const sub = await subRes.json()
+        if (!subRes.ok) throw new Error(`Stripe subscription fetch failed: ${JSON.stringify(sub)}`)
+
         const priceId = sub.items?.data?.[0]?.price?.id as string
         const plan = priceId === YEARLY_PRICE_ID ? 'yearly' : 'monthly'
-        const periodEnd = new Date(sub.current_period_end * 1000).toISOString()
+        const periodEndTs = sub.current_period_end ?? sub.billing_cycle_anchor
+        const periodEnd = periodEndTs ? new Date(periodEndTs * 1000).toISOString() : null
 
         await supabase.from('subscriptions').upsert({
           user_id: userId,
@@ -88,7 +91,8 @@ Deno.serve(async (req) => {
       case 'customer.subscription.updated': {
         const sub = event.data.object
         const status = sub.status as string
-        const periodEnd = new Date(sub.current_period_end * 1000).toISOString()
+        const periodEndTs = sub.current_period_end ?? sub.billing_cycle_anchor
+        const periodEnd = periodEndTs ? new Date(periodEndTs * 1000).toISOString() : null
         const priceId = sub.items?.data?.[0]?.price?.id as string
         const plan = priceId === YEARLY_PRICE_ID ? 'yearly' : 'monthly'
         const isPro = status === 'active' || status === 'trialing'

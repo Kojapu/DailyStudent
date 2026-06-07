@@ -76,6 +76,7 @@ const DEFAULT_APP_STATS: AppStats = {
 }
 
 interface StorageData {
+  userId?: string
   profile?: UserProfile
   personalEntries?: PersonalEntry[]
   generatedNotes?: Record<string, GeneratedSmartNote>
@@ -141,6 +142,7 @@ interface UserContextValue {
   deleteLernplan: (id: string) => void
   authUser: User | null
   authLoading: boolean
+  supabaseDataLoading: boolean
   signOut: () => Promise<void>
 }
 
@@ -265,6 +267,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const [authUser, setAuthUser] = useState<User | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [supabaseDataLoading, setSupabaseDataLoading] = useState(false)
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -275,82 +278,91 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         const userId = session.user.id
 
-        // Immediately populate from localStorage for instant UI
+        // Only use localStorage cache if it belongs to this user
         const s = loadStorage()
-        setProfile(s.profile ?? null)
-        setThemeState(s.theme ?? 'dark')
-        setIsProState(s.isPro ?? false)
-        setPersonalEntries(s.personalEntries ?? [])
-        setGeneratedNotes(s.generatedNotes ?? {})
-        setUserNotes(s.userNotes ?? [])
-        setGeneratedFlashCards(s.generatedFlashCards ?? [])
-        setCompletedHomeworkIds(s.completedHomeworkIds ?? [])
-        setStandaloneHomework(s.standaloneHomework ?? [])
-        setAppStats(s.appStats ?? DEFAULT_APP_STATS)
-        setLernzettel(s.lernzettel ?? [])
-        setSavedProbeklausuren(s.savedProbeklausuren ?? [])
-        setLernplaene(s.lernplaene ?? [])
-        let folders = s.userFolders ?? []
-        if (folders.length === 0 && s.profile) {
-          folders = generateDefaultFolders(s.profile)
-          saveStorage({ ...s, userFolders: folders })
+        const cacheIsOwn = s.userId === userId
+        if (!cacheIsOwn) {
+          localStorage.removeItem(STORAGE_KEY)
+        } else {
+          setProfile(s.profile ?? null)
+          setThemeState(s.theme ?? 'dark')
+          setIsProState(s.isPro ?? false)
+          setPersonalEntries(s.personalEntries ?? [])
+          setGeneratedNotes(s.generatedNotes ?? {})
+          setUserNotes(s.userNotes ?? [])
+          setGeneratedFlashCards(s.generatedFlashCards ?? [])
+          setCompletedHomeworkIds(s.completedHomeworkIds ?? [])
+          setStandaloneHomework(s.standaloneHomework ?? [])
+          setAppStats(s.appStats ?? DEFAULT_APP_STATS)
+          setLernzettel(s.lernzettel ?? [])
+          setSavedProbeklausuren(s.savedProbeklausuren ?? [])
+          setLernplaene(s.lernplaene ?? [])
+          let folders = s.userFolders ?? []
+          if (folders.length === 0 && s.profile) {
+            folders = generateDefaultFolders(s.profile)
+            saveStorage({ ...s, userFolders: folders })
+          }
+          setUserFolders(folders)
         }
-        setUserFolders(folders)
 
-        // Async: load from Supabase (authoritative) or migrate if empty
+        // Async: load from Supabase (authoritative)
+        setSupabaseDataLoading(true)
         void (async () => {
-          const supabaseData = await loadUserDataFromSupabase(userId)
-          if (supabaseData) {
-            // Supabase has data → use it (supports multi-device)
-            setProfile(supabaseData.profile)
-            setThemeState(supabaseData.theme)
-            setIsProState(supabaseData.isPro)
-            setPersonalEntries(supabaseData.personalEntries)
-            setGeneratedNotes(supabaseData.generatedNotes)
-            setUserNotes(supabaseData.userNotes)
-            setUserFolders(supabaseData.userFolders)
-            setGeneratedFlashCards(supabaseData.generatedFlashCards)
-            setCompletedHomeworkIds(supabaseData.completedHomeworkIds)
-            setStandaloneHomework(supabaseData.standaloneHomework)
-            setAppStats(supabaseData.appStats)
-            setLernzettel(supabaseData.lernzettel)
-            setSavedProbeklausuren(supabaseData.savedProbeklausuren)
-            setLernplaene(supabaseData.lernplaene)
-            // Cache Supabase data in localStorage
-            saveStorage({
-              profile: supabaseData.profile,
-              theme: supabaseData.theme,
-              isPro: supabaseData.isPro,
-              appStats: supabaseData.appStats,
-              userFolders: supabaseData.userFolders,
-              userNotes: supabaseData.userNotes,
-              generatedNotes: supabaseData.generatedNotes,
-              generatedFlashCards: supabaseData.generatedFlashCards,
-              lernzettel: supabaseData.lernzettel,
-              savedProbeklausuren: supabaseData.savedProbeklausuren,
-              lernplaene: supabaseData.lernplaene,
-              personalEntries: supabaseData.personalEntries,
-              standaloneHomework: supabaseData.standaloneHomework,
-              completedHomeworkIds: supabaseData.completedHomeworkIds,
-            })
-          } else if (s.profile && s.profile.faecher?.length) {
-            // Supabase empty, localStorage has onboarded data → migrate once
-            await migrateToSupabase(userId, {
-              profile: s.profile,
-              theme: s.theme ?? 'dark',
-              isPro: s.isPro ?? false,
-              appStats: s.appStats ?? DEFAULT_APP_STATS,
-              userFolders: folders,
-              userNotes: s.userNotes ?? [],
-              generatedNotes: s.generatedNotes ?? {},
-              generatedFlashCards: s.generatedFlashCards ?? [],
-              lernzettel: s.lernzettel ?? [],
-              savedProbeklausuren: s.savedProbeklausuren ?? [],
-              lernplaene: s.lernplaene ?? [],
-              personalEntries: s.personalEntries ?? [],
-              standaloneHomework: s.standaloneHomework ?? [],
-              completedHomeworkIds: s.completedHomeworkIds ?? [],
-            })
+          try {
+            const supabaseData = await loadUserDataFromSupabase(userId)
+            if (supabaseData) {
+              setProfile(supabaseData.profile)
+              setThemeState(supabaseData.theme)
+              setIsProState(supabaseData.isPro)
+              setPersonalEntries(supabaseData.personalEntries)
+              setGeneratedNotes(supabaseData.generatedNotes)
+              setUserNotes(supabaseData.userNotes)
+              setUserFolders(supabaseData.userFolders)
+              setGeneratedFlashCards(supabaseData.generatedFlashCards)
+              setCompletedHomeworkIds(supabaseData.completedHomeworkIds)
+              setStandaloneHomework(supabaseData.standaloneHomework)
+              setAppStats(supabaseData.appStats)
+              setLernzettel(supabaseData.lernzettel)
+              setSavedProbeklausuren(supabaseData.savedProbeklausuren)
+              setLernplaene(supabaseData.lernplaene)
+              saveStorage({
+                userId,
+                profile: supabaseData.profile,
+                theme: supabaseData.theme,
+                isPro: supabaseData.isPro,
+                appStats: supabaseData.appStats,
+                userFolders: supabaseData.userFolders,
+                userNotes: supabaseData.userNotes,
+                generatedNotes: supabaseData.generatedNotes,
+                generatedFlashCards: supabaseData.generatedFlashCards,
+                lernzettel: supabaseData.lernzettel,
+                savedProbeklausuren: supabaseData.savedProbeklausuren,
+                lernplaene: supabaseData.lernplaene,
+                personalEntries: supabaseData.personalEntries,
+                standaloneHomework: supabaseData.standaloneHomework,
+                completedHomeworkIds: supabaseData.completedHomeworkIds,
+              })
+            } else if (cacheIsOwn && s.profile && s.profile.faecher?.length) {
+              // Supabase empty, localStorage has THIS user's onboarded data → migrate once
+              await migrateToSupabase(userId, {
+                profile: s.profile,
+                theme: s.theme ?? 'dark',
+                isPro: s.isPro ?? false,
+                appStats: s.appStats ?? DEFAULT_APP_STATS,
+                userFolders: s.userFolders ?? [],
+                userNotes: s.userNotes ?? [],
+                generatedNotes: s.generatedNotes ?? {},
+                generatedFlashCards: s.generatedFlashCards ?? [],
+                lernzettel: s.lernzettel ?? [],
+                savedProbeklausuren: s.savedProbeklausuren ?? [],
+                lernplaene: s.lernplaene ?? [],
+                personalEntries: s.personalEntries ?? [],
+                standaloneHomework: s.standaloneHomework ?? [],
+                completedHomeworkIds: s.completedHomeworkIds ?? [],
+              })
+            }
+          } finally {
+            setSupabaseDataLoading(false)
           }
         })()
       }
@@ -613,7 +625,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    localStorage.removeItem(STORAGE_KEY)
     setProfile(null)
+    setIsProState(false)
+    setThemeState('dark')
     setPersonalEntries([])
     setGeneratedNotes({})
     setUserNotes([])
@@ -781,6 +796,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         deleteLernplan,
         authUser,
         authLoading,
+        supabaseDataLoading,
         signOut,
       }}
     >

@@ -208,6 +208,7 @@ export async function loadUserDataFromSupabase(userId: string): Promise<Supabase
       { data: entryRows },
       { data: homeworkRows },
       { data: completedRows },
+      { data: subRow },
     ] = await Promise.all([
       supabase.from('app_stats').select('*').eq('user_id', userId).single(),
       supabase.from('user_folders').select('*').eq('user_id', userId),
@@ -220,14 +221,21 @@ export async function loadUserDataFromSupabase(userId: string): Promise<Supabase
       supabase.from('personal_entries').select('*').eq('user_id', userId),
       supabase.from('standalone_homework').select('*').eq('user_id', userId),
       supabase.from('completed_homework_ids').select('homework_id').eq('user_id', userId),
+      supabase.from('subscriptions').select('status').eq('user_id', userId).maybeSingle(),
     ])
 
     const DEFAULT_STATS: AppStats = { scanCount: 0, examCount: 0, streak: 0, lastStudyDate: null, studiedDays: [], examScores: [] }
 
+    // Dev-mode accounts trust the manual profile flag; all others derive isPro from subscriptions only
+    const isDevMode = profileRow.is_dev_mode ?? false
+    const isPro = isDevMode
+      ? (profileRow.is_pro ?? false)
+      : (subRow?.status === 'active' || subRow?.status === 'trialing')
+
     return {
       profile: mapProfile(profileRow),
       theme: (profileRow.theme as AppTheme) ?? 'dark',
-      isPro: profileRow.is_pro ?? false,
+      isPro,
       appStats: statsRow ? mapAppStats(statsRow) : DEFAULT_STATS,
       userFolders: (folderRows ?? []).map(mapFolder),
       userNotes: (noteRows ?? []).map(mapNote),
