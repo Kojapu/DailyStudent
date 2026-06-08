@@ -386,7 +386,7 @@ function SubjectBarChart({ items }: { items: BarItem[] }) {
 
   return (
     <div className="overflow-x-auto -mx-1 px-1">
-      <div className="flex gap-2 pt-1" style={{ minWidth: items.length * 44 }}>
+      <div className="flex gap-1.5 pt-1" style={{ minWidth: items.length * 27 }}>
         {items.map((s) => {
           const barH = Math.max(2, Math.round((s.np / 15) * BAR_MAX))
           const c = npToBarColor(s.np)
@@ -394,7 +394,7 @@ function SubjectBarChart({ items }: { items: BarItem[] }) {
             <div
               key={s.subjectId}
               className="flex flex-col items-center shrink-0"
-              style={{ flex: '1 0 36px', maxWidth: 56 }}
+              style={{ flex: '1 0 22px', maxWidth: 34 }}
             >
               {/* Fixed-height bar area — bar anchors to bottom via justify-end */}
               <div

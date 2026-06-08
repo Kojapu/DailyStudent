@@ -7,7 +7,7 @@ import { loadKcForUser, type KcSubjectData } from '../data/kcLoader'
 import { supabase } from '../lib/supabase'
 import {
   loadUserDataFromSupabase, migrateToSupabase,
-  syncProfile, syncAppStats,
+  syncProfile, syncGradeData, syncAppStats,
   syncFolder, syncFoldersBatch, deleteFoldersFromDB,
   syncNote, deleteNotesFromDB,
   syncSmartNote,
@@ -510,7 +510,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const updated = { ...profile, ...data }
     setProfile(updated)
     persist(updated, personalEntries, generatedNotes, userNotes, userFolders)
-    if (authUser) void syncProfile(authUser.id, updated, theme, isPro)
+    if (authUser) {
+      void syncProfile(authUser.id, updated, theme, isPro)
+      // Grade data gets its own dedicated sync to prevent profile-sync races overwriting it
+      if (data.abiHalbjahre !== undefined) {
+        void syncGradeData(authUser.id, data.abiHalbjahre ?? [])
+      }
+    }
   }
 
   const addEntry = (entry: PersonalEntry) => {

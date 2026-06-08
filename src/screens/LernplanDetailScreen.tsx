@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useUser, type PersonalEntry } from '../context/UserContext'
 import { SUBJECT_INFO } from '../data/subjectInfo'
-import type { LernplanSession, LernDayType, LernMethode } from '../types'
+import type { LernplanSession, LernDayType, LernMethode, StundenplanSlot } from '../types'
 
 const METHOD_ICONS: Record<LernMethode, string> = {
   karteikarten: '🃏',
@@ -76,7 +76,7 @@ function uid() {
 export function LernplanDetailScreen() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { lernplaene, deleteLernplan, addEntries, isPro } = useUser()
+  const { lernplaene, deleteLernplan, addEntries, isPro, personalEntries, profile } = useUser()
 
   const plan = lernplaene.find((p) => p.id === id)
 
@@ -96,61 +96,146 @@ export function LernplanDetailScreen() {
   const addToCalendar = () => {
     const timeToMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
     const pad = (n: number) => String(n).padStart(2, '0')
-    const pref = plan.config.studyTimePreference ?? 'beides'
-    const baseMin = pref === 'morgen' ? 420 : pref === 'abend' ? 1020 : 540
+    const minToTime = (m: number) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`
+    const BUFFER = 15 // minutes between blocks
+    const MAX_SESSION_MIN = 90
+    const NOON = 13 * 60 // 780 min = 13:00
 
-    const getDow = (dateStr: string) => {
+    // Day of week in Stundenplan format (0=Mo … 4=Fr)
+    const getSpDow = (dateStr: string): number => {
       const d = new Date(dateStr).getDay()
-      return d === 0 ? 6 : d - 1
+      return d === 0 ? 6 : d - 1 // Sun→6, Mon→0 … Sat→5
     }
 
-    const advancePastBlocks = (dateStr: string, cursor: number, dur: number): number => {
-      const dow = getDow(dateStr)
-      let c = cursor
-      let changed = true
-      while (changed) {
-        changed = false
-        for (const bt of plan.config.blockedTimes) {
-          const applies = bt.dayOfWeek.length === 0 || bt.dayOfWeek.includes(dow)
-          if (!applies) continue
-          const bs = timeToMin(bt.startTime)
-          const be = timeToMin(bt.endTime)
-          if (c < be && c + dur > bs) { c = be; changed = true }
+    // Build sorted, merged list of busy intervals (start/end in minutes from midnight)
+    const getBusyIntervals = (dateStr: string): Array<{ s: number; e: number }> => {
+      const dow = getSpDow(dateStr)
+      const raw: Array<{ s: number; e: number }> = []
+
+      // 1. Stundenplan slots for this weekday (only Mo–Fr)
+      if (dow >= 0 && dow <= 4) {
+        const slots: StundenplanSlot[] = profile?.stundenplan?.slots ?? []
+        for (const slot of slots) {
+          if (slot.day !== dow) continue
+          raw.push({ s: timeToMin(slot.startTime), e: timeToMin(slot.endTime) })
         }
       }
-      return c
+
+      // 2. Existing personal calendar entries for this exact date
+      for (const entry of personalEntries) {
+        if (entry.date !== dateStr) continue
+        const s = timeToMin(entry.time)
+        const e = entry.endTime ? timeToMin(entry.endTime) : s + 60
+        raw.push({ s, e })
+      }
+
+      // 3. Plan's own blocked-time rules
+      for (const bt of plan.config.blockedTimes ?? []) {
+        const applies = bt.dayOfWeek.length === 0 || bt.dayOfWeek.includes(dow)
+        if (!applies) continue
+        raw.push({ s: timeToMin(bt.startTime), e: timeToMin(bt.endTime) })
+      }
+
+      // Sort and merge overlapping intervals
+      const sorted = raw.sort((a, b) => a.s - b.s)
+      const merged: Array<{ s: number; e: number }> = []
+      for (const iv of sorted) {
+        if (merged.length > 0 && iv.s <= merged[merged.length - 1].e + BUFFER) {
+          merged[merged.length - 1].e = Math.max(merged[merged.length - 1].e, iv.e)
+        } else {
+          merged.push({ ...iv })
+        }
+      }
+      return merged
     }
 
+    // Find free gaps in [dayStart, 23:00] given busy intervals.
+    // Returns gaps sorted by preference (morgen: morning first, abend: afternoon first).
+    const getFreeGaps = (
+      busy: Array<{ s: number; e: number }>,
+      pref: 'morgen' | 'abend' | 'beides',
+      dayStart: number,
+    ): Array<{ s: number; e: number }> => {
+      const DAY_END = 23 * 60
+      const gaps: Array<{ s: number; e: number }> = []
+      let cursor = dayStart
+
+      for (const iv of busy) {
+        if (iv.s > cursor) gaps.push({ s: cursor, e: iv.s })
+        cursor = Math.max(cursor, iv.e + BUFFER)
+      }
+      if (cursor < DAY_END) gaps.push({ s: cursor, e: DAY_END })
+
+      if (pref === 'morgen') {
+        const morning = gaps.filter(g => g.s < NOON)
+        const afternoon = gaps.filter(g => g.s >= NOON)
+        return [...morning, ...afternoon]
+      }
+      if (pref === 'abend') {
+        const afternoon = gaps.filter(g => g.e > NOON)
+        const morning = gaps.filter(g => g.e <= NOON)
+        return [...afternoon, ...morning]
+      }
+      return gaps // beides: chronological order
+    }
+
+    const pref = plan.config.studyTimePreference ?? 'beides'
     const entries: PersonalEntry[] = []
     const skipped: string[] = []
 
     plan.days.forEach((day) => {
       if (!day.sessions.length) return
-      let cursor = baseMin
+      const busy = getBusyIntervals(day.date)
+
+      // Determine earliest start based on preference
+      const lastSchoolEnd = busy.filter(b => {
+        const dow = getSpDow(day.date)
+        if (dow < 0 || dow > 4) return false
+        const slots: StundenplanSlot[] = profile?.stundenplan?.slots ?? []
+        return slots.some(sl => sl.day === dow && timeToMin(sl.startTime) === b.s)
+      }).reduce((max, b) => Math.max(max, b.e), 0)
+
+      const dayStart = pref === 'morgen' ? 7 * 60 : pref === 'abend' ? Math.max(13 * 60, lastSchoolEnd + BUFFER) : Math.max(7 * 60, lastSchoolEnd > 0 ? lastSchoolEnd + BUFFER : 7 * 60)
+      const freeGaps = getFreeGaps(busy, pref, dayStart)
+
+      let gapIdx = 0
+      let gapCursor = freeGaps[0]?.s ?? -1
+
       day.sessions.forEach((session) => {
-        cursor = advancePastBlocks(day.date, cursor, session.durationMin)
-        if (cursor + session.durationMin > 23 * 60) {
-          skipped.push(`${session.subjectName} (${day.date})`)
-          return
+        const dur = Math.min(session.durationMin, MAX_SESSION_MIN)
+
+        // Find a gap that fits this session
+        while (gapIdx < freeGaps.length) {
+          const gap = freeGaps[gapIdx]
+          if (gapCursor < gap.s) gapCursor = gap.s
+          if (gapCursor + dur <= gap.e) {
+            // Found a slot
+            const start = gapCursor
+            const end = start + dur
+            entries.push({
+              id: uid(),
+              title: `${session.subjectName} – ${session.topic}`,
+              type: 'lerneinheit',
+              date: day.date,
+              time: minToTime(start),
+              endTime: minToTime(end),
+              lernplanId: plan.id,
+              color: SUBJECT_INFO[session.subjectId]?.color ?? '#34C759',
+            })
+            gapCursor = end + BUFFER
+            return
+          }
+          // Gap too small or exhausted — move to next
+          gapIdx++
+          gapCursor = freeGaps[gapIdx]?.s ?? -1
         }
-        const end = cursor + session.durationMin
-        entries.push({
-          id: uid(),
-          title: `${session.subjectName} – ${session.topic}`,
-          type: 'lerneinheit',
-          date: day.date,
-          time: `${pad(Math.floor(cursor / 60))}:${pad(cursor % 60)}`,
-          endTime: `${pad(Math.floor(end / 60))}:${pad(end % 60)}`,
-          lernplanId: plan.id,
-          color: SUBJECT_INFO[session.subjectId]?.color ?? '#34C759',
-        })
-        cursor = end + 15
+        skipped.push(`${session.subjectName} (${day.date})`)
       })
     })
 
     addEntries(entries)
     let msg = `${entries.length} Lernblöcke wurden zum Kalender hinzugefügt.`
-    if (skipped.length) msg += `\n\n${skipped.length} Session(s) konnten nicht eingeplant werden (nach 23:00): ${skipped.join(', ')}`
+    if (skipped.length) msg += `\n\n${skipped.length} Block(s) konnten nicht eingeplant werden (kein freier Slot): ${skipped.join(', ')}`
     alert(msg)
   }
 

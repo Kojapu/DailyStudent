@@ -30,12 +30,12 @@ Die App bietet keinen einzelnen Lernweg, sondern einen **vernetzten Mix aus Lern
 | Styling | Tailwind CSS |
 | Build Tool | Vite |
 | Routing | React Router |
-| Persistenz | localStorage (`lernapp_v1`) → Supabase DB (Phase 3 in Arbeit) |
+| Persistenz | localStorage (`lernapp_v1`) → Supabase DB (Phase 3 aktiv) |
 | KI Text + Vision | Groq API — Llama 3.3 70B (Text) + Llama 4 Scout Vision (Bilder/Scans) |
 | KI Probeklausuren + Lernplan | Google Gemini — `gemini-2.5-flash` |
-| Auth | Supabase Auth — Email/Passwort + Google OAuth ✅ (vollständig implementiert + geroutet) |
-| DB | Supabase PostgreSQL — Schema + RLS fertig (`supabase/migrations/001_initial_schema.sql`) |
-| Payments | Stripe (Scaffold existiert, Edge Function + checkout code vorhanden, aber untested) |
+| Auth | Supabase Auth — Email/Passwort + Google OAuth ✅ vollständig in App.tsx geroutet |
+| DB | Supabase PostgreSQL — 13 Tabellen + RLS (`supabase/migrations/`) |
+| Payments | Stripe — Edge Function + Webhook geschrieben, aber **UNTESTED** |
 | Dev Server | localhost:5174 |
 | Repo | https://github.com/simonhapp-ai/DailyStudent.git |
 | Projektordner | C:\Users\simon\OneDrive\Desktop\Claude App |
@@ -63,11 +63,11 @@ Smart Notes
 ```
 
 ### Klausurenmodus-Screen als Hub
-`KlausurphasenScreen` ist KEIN Feature-Screen — er ist eine **Übersicht/Startpunkt** für alle Lernmethoden, zeigt den nächsten Klausurtermin, Streak, Schwächefach und ermöglicht den Einstieg in alle Lernwege. Das Layout ist bewusst so gewählt. Nicht ändern ohne Rückfrage.
+`KlausurphasenScreen` ist KEIN Feature-Screen — er ist eine **Übersicht/Startpunkt** für alle Lernmethoden. Enthält: nächster Klausurtermin, Lernplan-Preview, Auswendig-Lernen-Buttons, Probeklausur + Lernzettel, Statistik-Preview-Widget (Mini-Charts + 6 Stats → navigiert zu InsightsScreen). Das Layout ist bewusst so gewählt. Nicht ändern ohne Rückfrage.
 
 ---
 
-## Aktueller Stand — Phase 2 komplett, Phase 3 zu 70% in Arbeit (Stand: 08.06.2026)
+## Aktueller Stand — Phase 2 komplett, Phase 3 zu ~80% (Stand: 09.06.2026)
 
 ### Phase 2 — 100% funktioniert (echte KI, kein Mock):
 - Onboarding Gate (Name, Klasse, Schulform, Bundesland, Fächer, Klausurtermin, Stundenplan-Scan)
@@ -78,61 +78,85 @@ Smart Notes
 - **Blurting:** `evaluateBlurting()` via Groq — echter KI-Vergleich mit Smart Note Inhalt
 - **Probeklausur 4 Modi:** `generateMode1-4Exam()` via Gemini `gemini-2.5-flash` — echt generiert, echt korrigiert
 - **Lernzettel:** `generateLernzettel()` via Groq — `LernzettelScreen` + `LernzettelGeneratorScreen` vollständig
-- **Lernplan:** `generateLernplan()` via Gemini — 6-Schritt-Konfigurator (`LernplanKonfiguratorScreen`), Detailansicht (`LernplanDetailScreen`), 3 Plantypen (Einzel/Vollständig/Abitur), LK-Gewichtung, Kalender-Export, Print/PDF. Paywall: Einzel → erste 3 Tage frei, Rest blur; Vollständig + Abitur → Pro ab Schritt 1
-- **KC-Daten:** 196 JSON-Dateien in `public/kc/` für 15 Bundesländer, `kcLoader.ts` vollständig, Fallback auf Niedersachsen
+- **Lernplan:** `generateLernplan()` via Gemini — 6-Schritt-Konfigurator (`LernplanKonfiguratorScreen`), Detailansicht (`LernplanDetailScreen`), 3 Plantypen (Einzel/Vollständig/Abitur), LK-Gewichtung, Kalender-Export (smart scheduler), Print/PDF. Paywall: Einzel → erste 3 Tage frei, Rest blur; Vollständig + Abitur → Pro ab Schritt 1
+- **KC-Daten:** 196 JSON-Dateien in `public/kc/` für 16 Bundesländer, `kcLoader.ts` vollständig, Fallback auf Niedersachsen
 - **Stundenplan-Scanner:** `parseStundenplanFromImage()` via Groq Vision
-- **Stats:** Streak (echt), scanCount, examCount, studiedDays — live in localStorage
-- **InsightsScreen:** Notenverlauf-Chart, Fachvergleich, Wochenaktivität, KI-Lerntipps — alle Daten live
-- **AbiRechnerScreen:** NP-Rechner mit Zielnote-Vergleich
+- **Stats:** Streak (echt), scanCount, examCount, studiedDays — live in localStorage + Supabase
+- **InsightsScreen:** Notenverlauf-Chart (Q1–Q4), Fachvergleich-Balken, Wochenaktivität, KI-Lerntipps — alle Daten live
+- **KlausurphasenScreen Statistik-Widget:** Mini-Balkendiagramm (Notenpunkte/Fach) + Mini-Linienchart (Notenverlauf) + 6 Stats-Kacheln (Streak, Notizen, Fotos, PK, Lernzettel, Karten) → klickt zu InsightsScreen
+- **AbiRechnerScreen:** NP-Rechner mit Zielnote-Vergleich, Sync-Status-Feedback
 - **KlausurplanScreen, HausaufgabenheftScreen, KalenderScreen** — funktionsfähig
 - **FaecherEditScreen:** Fächer nachträglich hinzufügen/entfernen mit Ordner-Sync
 - **FolderSystem:** Ordner, Unterordner, auto-generiert nach Halbjahr/Quartal
 - **Theme:** Hell/Dunkel/System
 - **isPro-Flag:** Toggle im Profil (Dev-Mode) — schaltet alle KI-Features + Paywalls app-weit
+- **DashboardScreen:** Desktop-Landing mit Stundenplan-heute, Klausur-Countdown, Top-Notizen, Quick-Actions
 
-### Phase 3 — Was bereits fertig ist (NICHT wie dokumentiert):
+### Phase 3 — Was fertig ist:
 - **`src/lib/supabase.ts`** ✅ — Supabase Client vollständig
-- **`src/screens/AuthScreen.tsx`** ✅ — Login/Signup mit Email + Google OAuth + deutsche Fehlermeldungen — **ALREADY INTEGRATED IN APP.TX ROUTING** (Docs waren falsch)
-- **`UserContext.tsx`** ✅ — `authUser`, `authLoading`, `signOut`, Auth State Listener bereits implementiert
+- **`src/screens/AuthScreen.tsx`** ✅ — Login/Signup mit Email + Google OAuth + deutsche Fehlermeldungen — **INTEGRIERT IN APP.TSX ROUTING**
+- **`UserContext.tsx`** ✅ — `authUser`, `authLoading`, `signOut`, Auth State Listener, Sync Queue System, Retry-Logik
+- **`src/lib/supabaseSync.ts`** ✅ — Sync Queue mit Retry für alle Operationen inkl. `syncGradeData`
 - **`supabase/migrations/001_initial_schema.sql`** ✅ — Vollständiges DB-Schema mit 12 Tabellen, RLS, Trigger
-- **`supabase/functions/groq-proxy/index.ts`** ✅ — Groq API über Edge Functions proxied, API-Keys in Supabase Secrets
-- **`supabase/functions/gemini-proxy/index.ts`** ✅ — Gemini API über Edge Functions proxied (flash + flash-lite mit Fallback)
-- **`supabase/functions/create-checkout-session`** ⚠️ — Stripe Edge Function existiert, aber **NICHT vollständig getestet**
-- **`AbiRechnerScreen.tsx` Datenspeicherung** ✅ — Noten werden zu Supabase gespeichert, Sync-Status-Feedback für User (08.06.2026)
-- **`BundeslandScreen.tsx` Fehlerbehandlung** ✅ — Profil-Updates mit Error-Handling + User-Feedback (08.06.2026)
+- **`supabase/migrations/002_grade_data.sql`** ✅ — Dedizierte `grade_data` Tabelle für Notenisolation — **ANGEWENDET 09.06.2026**
+- **`supabase/functions/groq-proxy/index.ts`** ✅ — Groq API über Edge Functions proxied
+- **`supabase/functions/gemini-proxy/index.ts`** ✅ — Gemini API über Edge Functions proxied
+- **`supabase/functions/create-checkout-session`** ⚠️ — Stripe Edge Function: Code existiert, **NICHT getestet**
+- **`supabase/functions/stripe-webhook/index.ts`** ⚠️ — Webhook Handler: Code existiert, **NICHT getestet**
+- **Grade Data Isolation** ✅ — `grade_data` Tabelle + `syncGradeData()` isoliert Noten vom Profile-Sync (09.06.2026)
+- **Lernplan Kalender-Export** ✅ — Smart Scheduler: meidet Stundenplan + personalEntries, 15-Min-Pausen, max 90 Min/Block (09.06.2026)
 
-### Phase 3 — Known Issues & Bugs (Audit 08.06.2026):
+### Phase 3 — Known Issues & Bugs (Stand: 09.06.2026):
 
 **KRITISCH (Launch-Blocker):**
-1. **Responsive Layouts NOT ready** — nur `DashboardScreen` ist responsive (`md:`/`lg:` Breakpoints). Alle anderen Screens sind mobile-only. CLAUDE.md sagt "VOR LAUNCH ZWINGEND" aber nur ~10% implementiert. **FIX NEEDED:** Alle Screens mit `md:` (iPad) + `lg:` (Laptop) Layouts updaten, 2-Column-Layouts wo sinnvoll, Sidebar-Navigation ab `md:`
-2. **Supabase Sync fires-and-forgets** — Alle `sync*()` Funktionen in `UserContext.tsx` catchen errors silently mit `console.warn()`. Wenn Sync fehlschlägt, bekommt der User keine Benachrichtigung → stille Datenverluste möglich. **FIX NEEDED:** Error-Handling + Retry-Logik
-3. **Stripe `create-checkout-session` Edge Function untested** — Code existiert, aber kein Test, kein Production-Webhook. **FIX NEEDED:** Vollständig implementieren + testen vor Launch
+1. **Responsive Layouts NOT ready** — nur `DashboardScreen` ist vollständig responsive. Alle anderen Screens sind mobile-only. **FIX NEEDED:** Alle Screens mit `md:` (iPad) + `lg:` (Laptop) Layouts updaten, 2-Column-Layouts, Sidebar ab `md:`
+2. **Stripe `create-checkout-session` Edge Function untested** — Code existiert, aber kein Test, kein Production-Webhook. **FIX NEEDED:** Vollständig implementieren + testen vor Launch
 
 **MAJOR (vor Launch fixen):**
-4. **7 TypeScript `noUnusedLocals` Warnungen:**
+3. **TypeScript `noUnusedLocals` Warnungen:**
    - `KalenderScreen.tsx`: `navigate`, `calSpIdx`, `_CalendarCollapsed`, `StundenplanTodayWidget`, `_StundenplanMiniWidget` (5 unused)
    - `KlausurphasenScreen.tsx`: `_zielnoteToNP` (1 unused)
    - `LernplanKonfiguratorScreen.tsx`: `_abortRef` (1 unused)
    **FIX NEEDED:** Entfernen oder verwenden
+4. **Audio Transcription NOT implemented** — `AudioRecorderWidget.tsx`: Feature nicht fertig. **FIX NEEDED:** Entfernen aus UI oder implementieren
+5. **Note Editor NOT connected** — `NoteEditor.tsx`: kein Auto-Save verbunden. **FIX NEEDED:** Entfernen oder implementieren
 
-5. **Audio Transcription NOT implemented** — `AudioRecorderWidget.tsx` hat `// TODO: connect to Web Audio API + Whisper`. Feature ist nicht fertig. **FIX NEEDED:** Entfernen aus UI oder implementieren
-6. **Note Editor NOT connected** — `NoteEditor.tsx` hat `// TODO: connect to real note editing with auto-save`. **FIX NEEDED:** Entfernen oder implementieren
-7. **AbiRechnerScreen Daten-Verlust** ⚠️ **PARTIALLY FIXED (08.06.2026)** — Grades werden jetzt zu Supabase gespeichert mit Sync-Status-Feedback. Aber: Fehlerbehandlung muss noch in UserContext verbesert werden für stille Fehler.
-
-**MINOR (sollte gefixed werden, aber nicht Launch-blocker):**
-7. **Settings Screens sind Stubs** — `BenachrichtigungenScreen`, `DatenschutzScreen`, `BundeslandScreen` existieren aber sind minimal implementiert (buttons navigieren dahin, aber Screens zeigen fast nichts)
-8. **Console Logs** — 20+ `console.log()` + `console.warn()` statements für Debug; sollten vor Production entfernt/reduziert werden
+**MINOR:**
+6. **Settings Screens sind Stubs** — `BenachrichtigungenScreen`, `DatenschutzScreen` minimal implementiert
+7. **Apple OAuth** — Button in AuthScreen, Provider in Supabase konfiguriert, aber NICHT GETESTET
+8. **Email Confirmation Flow** — Supabase erfordert E-Mail-Bestätigung, aber kein UI nach Signup
 
 ### Phase 3 — Was noch zu tun ist:
-1. **Responsive Layouts — URGENTLY** — Alle Screens müssen `md:` (iPad) + `lg:` (Laptop) Support haben
-2. **Supabase Sync Error Handling** — Retry-Logik, User-Feedback für Fehler
-3. **Stripe Testing** — `create-checkout-session` Edge Function testen + Webhook validieren
-4. **TypeScript Cleanup** — 7 unused variables entfernen
-5. **Audio/Note Features** — Entweder implementieren oder UI entfernen
-6. **Settings Screens** — Placeholder-Screens mit echtem Inhalt füllen oder entfernen
-7. **Push-Benachrichtigungen** für Lernplan-Erinnerungen
-8. **Deployment** (Vercel/Netlify)
-9. **Studentenadaption** (Uni-Fächer, kein KC aber Syllabus-Upload)
+1. **Responsive Layouts — URGENTLY** — Alle Screens müssen `md:` + `lg:` Support haben
+2. **Stripe Testing** — `create-checkout-session` + Webhook vollständig testen
+3. **TypeScript Cleanup** — 7 unused variables entfernen
+4. **Audio/Note Features** — Entweder implementieren oder UI entfernen
+5. **Settings Screens** — Placeholder-Screens mit echtem Inhalt füllen oder entfernen
+6. **Push-Benachrichtigungen** für Lernplan-Erinnerungen
+7. **Deployment** (Vercel/Netlify)
+8. **Studentenadaption** (Uni-Fächer, kein KC aber Syllabus-Upload)
+
+---
+
+## Supabase DB-Schema — 13 Tabellen (Stand 09.06.2026)
+
+| Tabelle | Inhalt |
+|---------|--------|
+| `profiles` | Name, Klasse, Schulform, Bundesland, Fächer, Klausurtermine, Stundenplan (JSONB), Abi-Gesamtnote, Theme, isPro, isDevMode |
+| `grade_data` | `abi_halbjahre` (JSONB) — **dedizierte, isolierte Notentabelle**, verhindert Überschreiben durch Profile-Sync |
+| `app_stats` | Streak, scanCount, examCount, lastStudyDate, studiedDays[], examScores[] |
+| `user_folders` | Fach-Ordner-Baum mit Eltern-Kind-Beziehung |
+| `user_notes` | Alle Notizen (Text/Foto/PDF), attachments, homework_items, qa |
+| `generated_smart_notes` | KI-Analyse-Ergebnis pro Notiz (summary, keywords, examTopics, solution) |
+| `flashcards` | Alle Karteikarten mit front/back/subjectId |
+| `lernzettel` | Generierte Lernzettel mit Inhalt und Metadaten |
+| `saved_probeklausuren` | Abgeschlossene Klausurversuche mit KI-Korrektur |
+| `lernplaene` | Generierte Lernpläne (days JSONB, config JSONB) |
+| `personal_entries` | Kalendereinträge (lerneinheit/termin/erinnerung) |
+| `standalone_homework` | Hausaufgaben ohne Notiz-Kontext |
+| `subscriptions` | Stripe-Abonnements (nur server-seitig schreibbar via Webhook) |
+
+**RLS:** Jede Tabelle hat RLS — User kann nur eigene Rows lesen/schreiben (`auth.uid() = user_id`).
 
 ---
 
@@ -140,9 +164,8 @@ Smart Notes
 
 KC-Daten liegen als JSON-Dateien in `public/kc/{Bundesland}/{fach}.json`.
 
-**Verfügbare Bundesländer:** Baden-Württemberg, Bayern, Berlin, Brandenburg, Bremen, Hamburg, Hessen, Mecklenburg-Vorpommern, Niedersachsen, NRW, Rheinland-Pfalz, Saarland, Sachsen, Sachsen-Anhalt, Schleswig-Holstein  
-**Fallback:** Niedersachsen (wenn Bundesland fehlt)  
-**Fehlend:** Thüringen (in kcLoader gemappt aber kein Ordner → fällt auf Niedersachsen zurück)
+**Verfügbare Bundesländer:** Baden-Württemberg, Bayern, Berlin, Brandenburg, Bremen, Hamburg, Hessen, Mecklenburg-Vorpommern, Niedersachsen, NRW, Rheinland-Pfalz, Saarland, Sachsen, Sachsen-Anhalt, Schleswig-Holstein, Thüringen (Fallback auf Niedersachsen)  
+**Fallback:** Niedersachsen
 
 **kcLoader.ts** (`src/data/kcLoader.ts`):
 - `loadKcForSubject(bundeslandId, subjectId)` — lädt JSON async, fällt auf Niedersachsen zurück
@@ -154,15 +177,16 @@ KC-Daten liegen als JSON-Dateien in `public/kc/{Bundesland}/{fach}.json`.
 ## Architektur-Entscheidungen (nicht ändern ohne Rückfrage)
 
 - **localStorage Key:** `lernapp_v1` — bleibt als lokale Fallback-Schicht; Schema nicht brechen
-- **`persist()` in UserContext:** IMMER mit `{ ...loadStorage(), ...fields }` — niemals direkt ohne Merge, sonst Datenverlust (Bug wurde 06.06.2026 gefixt)
-- **isPro-Flag:** aktuell `isPro: boolean` in UserContext aus localStorage; wird durch Stripe + Supabase `subscriptions` Tabelle ersetzt
-- **Groq für Text/Vision** — Llama 3.3 70B + Llama 4 Scout Vision: Kosten, Geschwindigkeit, kein Rate-Limit für Prototyp
-- **Gemini für Probeklausuren + Lernplan** — `gemini-2.5-flash`: bessere Reasoning-Qualität für strukturierte Outputs; `gemini-2.5-flash-lite` für File-Import (günstiger)
+- **`persist()` in UserContext:** IMMER mit `{ ...loadStorage(), ...fields }` — niemals direkt ohne Merge, sonst Datenverlust (Bug 06.06.2026)
+- **Grade Data Isolation:** `abiHalbjahre` wird über `syncGradeData()` in die dedizierte `grade_data` Tabelle geschrieben. Beim Laden: `grade_data` hat Priorität vor `profiles.abi_halbjahre`. Nie grades nur über `syncProfile` schreiben!
+- **isPro-Flag:** aktuell `isPro: boolean` in UserContext; wird durch Stripe + Supabase `subscriptions` Tabelle ersetzt. Dev-Mode-Accounts vertrauen dem manuellen Flag.
+- **Groq für Text/Vision** — Llama 3.3 70B + Llama 4 Scout Vision: Kosten, Geschwindigkeit
+- **Gemini für Probeklausuren + Lernplan** — `gemini-2.5-flash`: bessere Reasoning-Qualität
 - **Blur-Paywall Pattern** — für alle KI-Features bei Free-Usern beibehalten
 - **TypeScript strict** — keine `any` Types einbauen
 - **KlausurphasenScreen bleibt Hub** — kein Feature-Screen, nur Einstieg in die Lernmethoden
 - **HomeScreen = UnterrichtScreen** — kein separater HomeScreen; `/` redirectet direkt zu `/unterricht`
-- **Supabase DB-Schema:** alle User-Daten haben `user_id UUID REFERENCES profiles(id)` + RLS `auth.uid() = user_id`; subscriptions nur server-seitig schreibbar (Webhook)
+- **Lernplan Kalender-Export:** `addToCalendar()` in `LernplanDetailScreen` baut Busy-Intervalle aus Stundenplan + personalEntries und platziert Sessions in freien Fenstern. Max 90 Min/Block, 15-Min-Pausen. Preferences: morgen=0–13h first, abend=13–24h first, beides=chronologisch.
 
 ---
 
@@ -170,9 +194,9 @@ KC-Daten liegen als JSON-Dateien in `public/kc/{Bundesland}/{fach}.json`.
 
 ```
 VITE_GROQ_API_KEY=gsk_...           # Groq API Key (Text + Vision) — gültig
-VITE_GEMINI_API_KEY=AIzaSy...       # Google Gemini API Key — gültig (neu generiert 05.06.2026)
-VITE_SUPABASE_URL=https://...       # Supabase Project URL — für Phase 3
-VITE_SUPABASE_ANON_KEY=eyJ...       # Supabase Anon Key — für Phase 3
+VITE_GEMINI_API_KEY=AIzaSy...       # Google Gemini API Key — gültig
+VITE_SUPABASE_URL=https://...       # Supabase Project URL
+VITE_SUPABASE_ANON_KEY=eyJ...       # Supabase Anon Key
 ```
 
 `.env` liegt im Root-Verzeichnis. Nie in Git committen (ist in `.gitignore`).
@@ -199,121 +223,125 @@ isDevMode:  true
 
 ---
 
+## Screens (33 total — alle geroutet, alle funktionsfähig)
+
+| Screen | Route | Funktion |
+|--------|-------|---------|
+| AuthScreen | /auth | Login/Signup Email + Google OAuth |
+| OnboardingScreen | (gate) | 9-Schritt-Onboarding mit Stundenplan-Scan |
+| DashboardScreen | /dashboard | Desktop-Landing, heute-Übersicht |
+| UnterrichtScreen | /unterricht | Fach-Tree, Ordner, Foto-Import |
+| LessonScreen | /unterricht/:id | Fach-Detail, alle Notizen |
+| FolderScreen | /unterricht/:id/ordner/:folderId | Ordner-Ansicht |
+| NoteCreateScreen | .../neue-notiz | Notiz erstellen (5 Block-Typen) |
+| SmartNotesScreen | .../notiz/:lessonId | Notiz-Detail + KI-Analyse |
+| KalenderScreen | /kalender | Wochen-/Monatskalender + Einträge |
+| HausaufgabenheftScreen | /hausaufgaben | Hausaufgaben-Tracker |
+| KlausurplanScreen | /klausuren | Klausurtermine verwalten |
+| AbiRechnerScreen | /abi-rechner | NP-Rechner Q1–Q4 mit Zielnote |
+| KlausurphasenScreen | /klausurmodus | Hub für alle Lernmethoden |
+| LearnModeScreen | /klausurmodus/lernen | Karteikarten-Lern-Session |
+| FlashCardGeneratorScreen | /klausurmodus/karteikarten/neu | Karteikarten generieren |
+| BlurtingScreen | /klausurmodus/blurting | Blurting + KI-Bewertung |
+| LernzettelScreen | /klausurmodus/lernzettel | Lernzettel-Bibliothek |
+| LernzettelGeneratorScreen | /klausurmodus/lernzettel/neu | Lernzettel generieren |
+| ProbeklausurMenuScreen | /klausurmodus/probeklausur | Probeklausur-Hub |
+| ProbeklausurMode1Screen | .../afb-trainer | AFB I–III Trainer |
+| ProbeklausurMode2Screen | .../vollstaendige-klausur | 90-Min-Klausur |
+| ProbeklausurMode3Screen | .../materialklausur | Material-Klausur |
+| ProbeklausurMode4Screen | .../ohne-material | Ohne Material |
+| ProbeklausurRetroScreen | .../retrospektive | Alle PK-Ergebnisse |
+| LernplanListScreen | /klausurmodus/lernplan | Alle Lernpläne |
+| LernplanKonfiguratorScreen | /klausurmodus/lernplan/neu | 6-Schritt-Generator |
+| LernplanDetailScreen | /klausurmodus/lernplan/:id | Tages-Ansicht + Kalender-Export |
+| InsightsScreen | /insights | Statistiken, Charts, Lerntipps |
+| ProfilScreen | /profil | User-Settings, Pro-Toggle |
+| FaecherEditScreen | /profil/faecher | Fächer hinzufügen/entfernen |
+| BundeslandScreen | /profil/bundesland | Bundesland + Schulform ändern |
+| BenachrichtigungenScreen | /profil/benachrichtigungen | Notification-Toggles (UI only) |
+| DatenschutzScreen | /profil/datenschutz | Datenschutz/AGB Stub |
+
+---
+
 ## Wichtige Dateien / Struktur
 
 ```
 src/
 ├── app/
-│   └── App.tsx                   # Router, ErrorBoundary, ThemeApplier, Layout
+│   └── App.tsx                   # Router, ErrorBoundary, ThemeApplier, Layout, Auth-Gate
 ├── components/
 │   ├── lesson/
-│   │   ├── FotoScannerWidget.tsx
-│   │   ├── AudioRecorderWidget.tsx
-│   │   └── NoteEditor.tsx
+│   │   ├── FotoScannerWidget.tsx  # Kamera-Zugriff + Foto-Capture
+│   │   ├── AudioRecorderWidget.tsx # Web Audio API (UNFERTIG — kein Whisper)
+│   │   └── NoteEditor.tsx        # Text-Editor (UNFERTIG — kein Auto-Save)
 │   ├── learn/
-│   │   ├── FlashCard.tsx
-│   │   ├── ExamQuestion.tsx
-│   │   └── AIFeedbackCard.tsx
-│   └── ui/                       # Button, Card, Badge, BottomNav, Header, ProModal, BottomSheet, ...
+│   │   ├── FlashCard.tsx         # Karteikarte mit Flip-Mechanik
+│   │   ├── ExamQuestion.tsx      # Klausur-Frage-Display
+│   │   └── AIFeedbackCard.tsx    # KI-Korrektur-Display
+│   └── ui/                       # Button, Card, Badge, BottomNav, DesktopSidebar,
+│                                 # Header, ProModal, BottomSheet, LernvorschlagWidget,
+│                                 # SyncErrorBanner, KcFallbackBanner, MathRenderer, ...
 ├── context/
-│   └── UserContext.tsx            # Zentraler State + localStorage + Supabase Auth State
+│   └── UserContext.tsx            # Zentraler State + localStorage + Supabase Auth + Sync Queue
 ├── data/
-│   ├── mockData.ts                # NUR NOCH: halfYears[], topics[], subjects[] — kein Legacy-Mock
+│   ├── mockData.ts                # halfYears[], topics[], subjects[] (Legacy-Stubs, kein Mock mehr)
 │   ├── subjectInfo.ts             # SUBJECT_INFO + SUBJECT_GROUPS (Name, Icon, Farbe pro Fach)
 │   └── kcLoader.ts                # loadKcForSubject/User(), buildKcPromptContext()
 ├── lib/
 │   ├── groq.ts                    # Alle Groq API Calls (OCR, SmartNote, Flashcards, Blurting, Lernzettel, ...)
-│   ├── gemini.ts                  # Gemini API Calls (Probeklausur + Lernplan Generierung, File-Import)
-│   ├── supabase.ts                # Supabase Client (createClient mit URL + AnonKey aus .env)
+│   ├── gemini.ts                  # Gemini API Calls (Probeklausur, Lernplan, File-Import)
+│   ├── supabase.ts                # Supabase Client
+│   ├── supabaseSync.ts            # Sync-Layer: syncProfile, syncGradeData, syncNote, etc. + Queue
 │   └── pdf.ts                     # PDF → Bilder Konvertierung (pdfjs)
-├── screens/                       # Ein Screen pro Route
-│   ├── OnboardingScreen.tsx       # Enthält DEV_PROFILE für Skip-Button
-│   ├── AuthScreen.tsx             # Login/Signup — Email + Google OAuth (noch nicht in App.tsx geroutet)
-│   ├── KalenderScreen.tsx
-│   ├── UnterrichtScreen.tsx       # Fach-Tree, Ordner, Foto-Import mit KI-Zielvorschlag
-│   ├── LessonScreen.tsx
-│   ├── FolderScreen.tsx
-│   ├── SmartNotesScreen.tsx       # Notiz-Detail + KI-Analyse + Keyword-Erklärung + FC-Generator
-│   ├── NoteCreateScreen.tsx
-│   ├── KlausurphasenScreen.tsx    # Hub für alle Lernmethoden
-│   ├── LearnModeScreen.tsx        # Karteikarten-Bibliothek + Lern-Session
-│   ├── FlashCardGeneratorScreen.tsx
-│   ├── BlurtingScreen.tsx         # Blurting + KI-Bewertung
-│   ├── ProbeklausurMenuScreen.tsx
-│   ├── ProbeklausurMode1Screen.tsx  # AFB-Trainer
-│   ├── ProbeklausurMode2Screen.tsx  # Vollständige Klausur
-│   ├── ProbeklausurMode3Screen.tsx  # Materialklausur
-│   ├── ProbeklausurMode4Screen.tsx  # Ohne Material
-│   ├── ProbeklausurRetroScreen.tsx
-│   ├── LernzettelScreen.tsx       # Lernzettel-Bibliothek + Detail-Ansicht
-│   ├── LernzettelGeneratorScreen.tsx  # Lernzettel generieren via Groq
-│   ├── LernplanKonfiguratorScreen.tsx # 6-Schritt-Konfigurator → generateLernplan() via Gemini
-│   ├── LernplanDetailScreen.tsx   # Lernplan-Ansicht: Tage, Sessions, Kalender-Export, Print
-│   ├── KlausurplanScreen.tsx
-│   ├── HausaufgabenheftScreen.tsx
-│   ├── AbiRechnerScreen.tsx
-│   ├── InsightsScreen.tsx         # Statistiken, Charts, Lerntipps — alle Daten live
-│   ├── ProfilScreen.tsx           # Pro-Banner nur bei !isPro sichtbar
-│   └── FaecherEditScreen.tsx      # Fächer hinzufügen/entfernen (Route: /profil/faecher)
+├── screens/                       # Ein Screen pro Route (33 Screens — alle aktiv)
 └── types/
     └── index.ts                   # Alle TypeScript-Typen
 public/
-└── kc/                            # KC-JSONs: 15 Bundesländer × ~14 Fächer = ~196 Dateien
+└── kc/                            # KC-JSONs: 16 Bundesländer × ~12 Fächer = ~196 Dateien
 supabase/
-└── migrations/
-    └── 001_initial_schema.sql     # Vollständiges DB-Schema + RLS + Trigger + Indexes
+├── migrations/
+│   ├── 001_initial_schema.sql     # 12 Tabellen, RLS, Trigger — BEREITS ANGEWENDET
+│   └── 002_grade_data.sql         # grade_data Tabelle — MUSS NOCH ANGEWENDET WERDEN
+└── functions/
+    ├── groq-proxy/                # Groq API Proxy (deployed)
+    ├── gemini-proxy/              # Gemini API Proxy (deployed)
+    ├── create-checkout-session/   # Stripe Checkout (EXISTS, UNTESTED)
+    └── stripe-webhook/            # Stripe Webhook Handler (EXISTS, UNTESTED)
 ```
 
 **Gelöschte Screens (nicht mehr vorhanden):**
-- `HomeScreen.tsx` — war ungeroutet, komplett toter Screen
-- `ExamModeScreen.tsx` — Legacy Mock-Klausur, von Probeklausur-4-Modi ersetzt
-- `ExamResultScreen.tsx` — Legacy Mock-Ergebnis, von Probeklausur-Korrektur ersetzt
-- `SubjectListScreen.tsx` — Legacy Mock mit `mockData.subjects`, nie geroutet (gelöscht 06.06.2026)
+- `HomeScreen.tsx`, `ExamModeScreen.tsx`, `ExamResultScreen.tsx`, `SubjectListScreen.tsx`
 
 ---
 
 ## Design-Prinzipien — iOS / Apple Quality Standard
 
-DailyStudent soll sich anfühlen wie eine native Apple-App. Jede UI-Entscheidung orientiert sich an iOS-Designsprache.
+DailyStudent soll sich anfühlen wie eine native Apple-App.
 
-### Grundprinzipien
+**1. Klarheit vor Dekoration** — Kein Ornament ohne Bedeutung. Text ≥ 10px, Haupttext ≥ 13px.
 
-**1. Klarheit vor Dekoration**
-Jedes Element hat eine klare Funktion. Kein Ornament ohne Bedeutung. Text ist immer lesbar — nie kleiner als 10px, Haupttext ≥ 13px.
+**2. Links-Ausrichtung als Standard** — `text-left` überall außer isolierte Metriken oder Leerzustände.
 
-**2. Links-Ausrichtung als Standard**
-Alle Widget-Inhalte, Listenpunkte und Karten-Texte sind linksbündig (`text-left`). Zentrierter Text nur für isolierte Metriken (Zahl mit Label darunter) oder leere Zustände. Buttons ohne explizites `text-left` können Browser-seitig zentrieren — immer `text-left` setzen.
-
-**3. Tiefe durch Schatten, nicht Rahmen**
-Primäre Karten: `shadow-card-adaptive` + subtiler Border (`border-border/60`). Keine harten schwarzen Borders. Schatten-Stärke signalisiert Hierarchie — float > card > flat.
+**3. Tiefe durch Schatten** — `shadow-card-adaptive` + `border-border/60`. Keine harten Borders.
 
 **4. Konsistente Spacing-Sprache**
 - Screen-Padding: `px-4`
 - Card-Innenabstand: `p-4` oder `p-5`
-- Widget-Icon-Padding: `px-3.5 pt-3.5`
 - Gap zwischen Widgets: `gap-3` oder `space-y-3`
 - Section-Label Abstand: `mb-2.5`
 
-**5. Gradients für Akzente, nicht für Backgrounds**
-Gradient-Icons: `rounded-[14px]` Pill mit farbigem Gradient + Schatten. Gradient-Buttons für primäre CTAs. Hintergrundfarben bleiben flach (`bg-surface`, `bg-background`).
+**5. Gradient-Icons** — `w-11 h-11 rounded-[14px]` (GradientIcon Pattern). Weiß auf Gradient. Keine nackten Emojis als primäre Widget-Icons.
 
-**6. Icons sind immer in einem Gradient-Container**
-Widget-Icons: `w-11 h-11 rounded-[14px]` (AppIconPill / GradientIcon Pattern). Icon-Farbe ist immer weiß auf farbigem Gradient. Niemals nackte Emojis als primäre Widget-Icons.
+**6. Chevron bei Navigation** — Jeder navigierende Button bekommt `<Chevron />` rechts.
 
-**7. Indikator-Pfeile bei navigierbaren Elementen**
-Jeder Button der zu einem anderen Screen navigiert bekommt einen `<Chevron />` (`›`) am rechten Rand. Quadratische Karten: Chevron top-right via `flex items-start justify-between`. Volle Breite: Chevron am Ende der Flex-Row.
+**7. Farbe kommuniziert Zustand**
+- Grün (`#30D158`) = erledigt / Erfolg
+- Orange (`#FF9F0A`) = Warnung / Streak
+- Rot (`#FF453A`) = kritisch / Klausur
+- Lila Accent (`#7C3AED`) = primäre Aktion / Brand
+- Teal (`#5AC8FA`) = Kalender / neutral
 
-**8. Farbe kommuniziert Zustand**
-- Grün (`#30D158`) = erledigt / gut / Erfolg
-- Orange (`#FF9F0A`) = Warnung / bald fällig / Streak
-- Rot (`#FF453A`) = kritisch / Klausur / Gefahr
-- Lila (Accent `#7C3AED`) = primäre Aktion / Brand
-- Teal (`#5AC8FA`) = Kalender / neutral-informativ
-
-**9. Zahlen in Pill-Badges: immer `whitespace-nowrap`**
-Streak, Counts, Badges in Pills: `inline-flex items-center gap-1 whitespace-nowrap` — verhindert Umbruch auf kleinen Phones (375px). `shrink-0` wenn neben flexiblem Text.
-
-**10. Typografie-Hierarchie**
+**8. Typografie-Hierarchie**
 | Rolle | Größe | Gewicht |
 |-------|-------|---------|
 | Screen-Titel | 28px | 700 bold |
@@ -321,50 +349,48 @@ Streak, Counts, Badges in Pills: `inline-flex items-center gap-1 whitespace-nowr
 | Card-Titel | 15–16px | 700 bold |
 | Card-Subtitle | 12–13px | 400–500 |
 | Metric groß | 28–34px | 900 black |
-| Metric klein | 18px | 900 black |
-| Label unter Metric | 11px | 400, text-muted |
 
-**11. Zustandsdesign für leere Screens**
-Leerzustände zeigen: Icon (groß, Gradient-Container) + Headline + kurze Erklärung + primärer CTA-Button. Kein leerer Screen ohne Handlungsaufforderung.
+**9. Zustandsdesign** — Leere Screens: Icon + Headline + Erklärung + CTA-Button.
 
-**12. Animationen sind subtil und schnell**
-- Fade-in: `opacity 0.18s ease`
-- Scale-press: `active:scale-[0.98]` oder `press-sm`
-- Accordion: `max-height` transition `0.38s cubic-bezier(0.4,0,0.2,1)`
-- Modal: `scale + opacity`, origin contextual, `0.2–0.28s`
-- Keine Bounce-Animationen auf Datenelementen
+**10. Animationen** — `active:scale-[0.98]`, transitions max 0.28s, keine Bounce-Animationen.
 
 ---
 
 ## Developer-Kontext
 
-- **Entwickler:** Simon (kein Coding-Background, arbeitet mit Claude Code in VS Code) + Jan (baut Supabase/Backend)
+- **Entwickler:** Simon (kein Coding-Background, arbeitet mit Claude Code in VS Code) + Jan (Supabase/Backend)
 - **Workflow:** Claude Code baut, Simon reviewed im Browser (localhost:5174), dann git commit + push
 - **Git:** `git add . && git commit -m "..." && git push`
-- **Wichtig:** Immer erklären was du gebaut hast und warum — keine stillen Änderungen
+- **Wichtig:** Immer erklären was gebaut wurde und warum — keine stillen Änderungen
 
 ---
 
-## Letzte Session (08.06.2026)
+## Letzte Session (09.06.2026)
 
-**Comprehensive App Audit durchgeführt:**
-- Alle 40+ Screens reviewd auf echte Fertigstellung vs. CLAUDE.md Claims
-- Befund: Phase 2 AI Features 100% funktional, aber Phase 3 hat große Lücken
-- **Critical Issues:** Responsive Layouts NOT ready (nur DashboardScreen responsive), Supabase-Sync errors silently fail, Stripe untested
-- Docs waren teilweise falsch (Auth IS integrated, nicht "noch nicht begonnen")
+**App Audit + 3 Features implementiert:**
 
-**Fixes implementiert (08.06.2026):**
-1. **AbiRechnerScreen** — Noten speichern jetzt zu Supabase mit visueller Bestätigung:
-   - Added syncStatus state: 'saving' | 'saved' | 'error' | null
-   - Header zeigt Sync-Status: "Speichern..." → "✓ Gespeichert" → auto-clear nach 2s
-   - Grades werden zu `profile.abiHalbjahre` gepersisted via `updateProfile()` → Supabase
-2. **BundeslandScreen** — Profil-Updates mit Error-Handling:
-   - try/catch um handleSave() mit Fehler-Feedback für User
-   - Button zeigt "✕ Fehler" wenn Exception auftritt
-   - Error-Nachricht angezeigt: "Fehler beim Speichern. Bitte versuchen Sie es später erneut."
+**1. Lernplan Kalender-Export — Smart Scheduler (LernplanDetailScreen.tsx)**
+- `addToCalendar()` komplett neu geschrieben
+- Berücksichtigt jetzt: Stundenplan-Slots für den Wochentag + bestehende `personalEntries` + Plan-Blocked-Times
+- Busy-Intervalle werden zu Slots gemergt (mit 15-Min-Puffer)
+- `studyTimePreference`: morgen → Vormittags-Slots priorisiert, abend → 13h+ priorisiert, beides → chronologisch
+- Max 90 Min pro Lernblock im Kalender
+- Hinweis: Session-Blöcke die keinen freien Slot finden, werden mit Warnung übersprungen
 
-**CLAUDE.md aktualisiert:**
-- Auth Integration Status korrigiert (war: "noch nicht begonnen", ist: ✅ DONE)
-- Stripe Status korrigiert (war: "noch nicht begonnen", ist: ⚠️ scaffolded but untested)
-- Responsive Layout Status korrigiert (nur 10% implementiert, nicht "ready")
-- 9 Known Issues + Fixes dokumentiert
+**2. Notendata-Isolation (002_grade_data.sql + supabaseSync.ts + UserContext.tsx)**
+- Neue `grade_data` Tabelle in Supabase: dedizierter Storage nur für `abi_halbjahre`
+- `syncGradeData(userId, abiHalbjahre)` — schreibt isoliert von Profile-Sync
+- `loadUserDataFromSupabase()` lädt grades aus `grade_data` (hat Priorität vor `profiles.abi_halbjahre`)
+- `updateProfile()` in UserContext ruft `syncGradeData()` auf wenn `abiHalbjahre` in Update enthalten
+- Migration `002_grade_data.sql` wurde im Supabase SQL Editor ausgeführt ✅
+
+**3. KlausurphasenScreen Statistik-Widget (KlausurphasenScreen.tsx)**
+- Altes Widget (3 Stat-Tiles + Fortschrittsbalken) durch neues Preview-Dashboard ersetzt
+- Neues Widget enthält:
+  - Mini Balken-Chart: Notenpunkte pro Fach (Emoji-Icons unten)
+  - Mini Linien-Chart: Notenverlauf Q1–Q4 aller Fächer
+  - 6 Stat-Kacheln: 🔥 Streak, 📝 Notizen, 📸 Fotos, 📋 Probeklausuren, 📄 Lernzettel, 🎴 Karten
+- Gesamtes Widget ist klickbar → navigiert zu `/insights`
+- Beide Charts zeigen Leerzustand wenn noch keine Noten eingetragen
+
+**4. CLAUDE.md vollständig aktualisiert** — Alle 33 Screens, korrekter Phase-Status, DB-Schema-Tabelle, neue Architektur-Entscheidungen

@@ -24,6 +24,7 @@ export const SUBJECT_INFO: Record<string, { name: string; icon: string; color: s
   religion:       { name: 'Religion',          icon: '🙏', color: '#D97706' },
   informatik:     { name: 'Informatik',        icon: '💻', color: '#60A5FA' },
   wirtschaft:     { name: 'Wirtschaft',        icon: '📊', color: '#FB923C' },
+  seminarfach:    { name: 'Seminarfach',       icon: '📋', color: '#F59E0B' },
 }
 
 export const SUBJECT_TOPIC_EXAMPLES: Record<string, [string, string]> = {
@@ -52,6 +53,7 @@ export const SUBJECT_TOPIC_EXAMPLES: Record<string, [string, string]> = {
   religion:       ['Theodizee', 'Bergpredigt'],
   informatik:     ['Sortieralgorithmen', 'OOP – Vererbung'],
   wirtschaft:     ['Marktgleichgewicht', 'Wirtschaftskreislauf'],
+  seminarfach:    ['Facharbeit – Gliederung', 'Quellenkritik & Zitierweise'],
 }
 
 export function getTopicPlaceholder(subjectId?: string | null): string {
@@ -73,4 +75,5 @@ export const SUBJECT_GROUPS = [
   { label: 'Gesellschaftswiss.',    ids: ['geschichte', 'politik', 'geographie', 'wirtschaft'] },
   { label: 'Philosophie & Ethik',   ids: ['philosophie', 'ethik', 'werteUndNormen', 'religion'] },
   { label: 'Kunst & Sport',         ids: ['kunst', 'musik', 'sport'] },
+  { label: 'Sonstiges',             ids: ['seminarfach'] },
 ]

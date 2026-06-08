@@ -5,7 +5,7 @@
 import { supabase } from './supabase'
 import type {
   UserFolder, UserNote, GeneratedSmartNote, FlashCard,
-  Lernzettel, SavedProbeklausur, Lernplan, AppStats,
+  Lernzettel, SavedProbeklausur, Lernplan, AppStats, AbiHalbjahr,
 } from '../types'
 import type { UserProfile, PersonalEntry, StandaloneHomeworkItem, AppTheme } from '../context/UserContext'
 
@@ -121,6 +121,14 @@ export async function retrySyncQueue(userId: string): Promise<{ success: number;
           is_pro: isPro,
         })
         success++
+      } else if (item.operation === 'syncGradeData') {
+        const { abiHalbjahre } = item.payload as any
+        await supabase.from('grade_data').upsert({
+          user_id: userId,
+          abi_halbjahre: abiHalbjahre,
+          updated_at: new Date().toISOString(),
+        })
+        success++
       }
     } catch (err) {
       failed++
@@ -133,7 +141,7 @@ export async function retrySyncQueue(userId: string): Promise<{ success: number;
   if (success > 0) {
     const remaining = queue.filter(i => {
       try {
-        return i.operation === 'syncProfile'
+        return i.operation === 'syncProfile' || i.operation === 'syncGradeData'
           ? false
           : true
       } catch {
@@ -152,7 +160,7 @@ export async function retrySyncQueue(userId: string): Promise<{ success: number;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>
 
-function mapProfile(r: Row): UserProfile {
+function mapProfile(r: Row, abiHalbjahreOverride?: AbiHalbjahr[] | null): UserProfile {
   return {
     name: r.name,
     klasse: r.klasse,
@@ -166,7 +174,7 @@ function mapProfile(r: Row): UserProfile {
     folderSortMode: r.folder_sort_mode,
     klausurtermine: r.klausurtermine ?? [],
     stundenplan: r.stundenplan,
-    abiHalbjahre: r.abi_halbjahre,
+    abiHalbjahre: abiHalbjahreOverride !== undefined ? abiHalbjahreOverride : r.abi_halbjahre,
     abiGesamtpunkte: r.abi_gesamtpunkte,
     abiGesamtnote: r.abi_gesamtnote,
     isDevMode: r.is_dev_mode ?? false,
@@ -347,6 +355,7 @@ export async function loadUserDataFromSupabase(userId: string): Promise<Supabase
       { data: homeworkRows },
       { data: completedRows },
       { data: subRow },
+      { data: gradeRow },
     ] = await Promise.all([
       supabase.from('app_stats').select('*').eq('user_id', userId).single(),
       supabase.from('user_folders').select('*').eq('user_id', userId),
@@ -360,6 +369,7 @@ export async function loadUserDataFromSupabase(userId: string): Promise<Supabase
       supabase.from('standalone_homework').select('*').eq('user_id', userId),
       supabase.from('completed_homework_ids').select('homework_id').eq('user_id', userId),
       supabase.from('subscriptions').select('status').eq('user_id', userId).maybeSingle(),
+      supabase.from('grade_data').select('abi_halbjahre').eq('user_id', userId).maybeSingle(),
     ])
 
     const DEFAULT_STATS: AppStats = { scanCount: 0, examCount: 0, streak: 0, lastStudyDate: null, studiedDays: [], examScores: [] }
@@ -370,8 +380,11 @@ export async function loadUserDataFromSupabase(userId: string): Promise<Supabase
       ? (profileRow.is_pro ?? false)
       : (subRow?.status === 'active' || subRow?.status === 'trialing')
 
+    // grade_data table is authoritative — fall back to profiles.abi_halbjahre for old accounts
+    const resolvedAbiHalbjahre = gradeRow?.abi_halbjahre ?? profileRow.abi_halbjahre ?? null
+
     return {
-      profile: mapProfile(profileRow),
+      profile: mapProfile(profileRow, resolvedAbiHalbjahre),
       theme: (profileRow.theme as AppTheme) ?? 'dark',
       isPro,
       appStats: statsRow ? mapAppStats(statsRow) : DEFAULT_STATS,
@@ -448,6 +461,22 @@ export async function syncProfile(userId: string, profile: UserProfile, theme: A
     const errMsg = err instanceof Error ? err.message : String(err)
     console.warn('[Supabase] syncProfile failed:', errMsg)
     addToSyncQueue('syncProfile', { userId, profile, theme, isPro })
+  }
+}
+
+// Dedicated grade sync — isolated from profile sync to prevent overwrite races.
+// grade_data table is the authoritative source for abiHalbjahre.
+export async function syncGradeData(userId: string, abiHalbjahre: AbiHalbjahr[]): Promise<void> {
+  try {
+    await supabase.from('grade_data').upsert({
+      user_id: userId,
+      abi_halbjahre: abiHalbjahre,
+      updated_at: new Date().toISOString(),
+    })
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.warn('[Supabase] syncGradeData failed:', errMsg)
+    addToSyncQueue('syncGradeData', { userId, abiHalbjahre })
   }
 }
 

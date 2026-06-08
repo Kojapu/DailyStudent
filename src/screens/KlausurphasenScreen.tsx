@@ -4,6 +4,7 @@ import { useUser } from '../context/UserContext'
 import { SUBJECT_INFO } from '../data/subjectInfo'
 import { endnoteForEntry } from './AbiRechnerScreen'
 import { LernvorschlagWidget } from '../components/ui/LernvorschlagWidget'
+import type { AbiHalbjahr } from '../types'
 
 function getCurrentStreak(streak: number, lastStudyDate: string | null): number {
   if (!lastStudyDate) return 0
@@ -27,6 +28,145 @@ function _zielnoteToNP(z: string): number {
 }
 
 const WEEKDAY_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa']
+const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const
+
+// ── Grade helpers ─────────────────────────────────────────────────────────────
+
+function npColor(np: number): string {
+  if (np >= 11) return '#34C759'
+  if (np >= 8)  return '#FF9500'
+  if (np >= 5)  return '#FF6B35'
+  return '#FF3B30'
+}
+
+function npLabel(np: number): string {
+  const m: Record<number, string> = {
+    15:'1+',14:'1',13:'1−',12:'2+',11:'2',10:'2−',
+    9:'3+',8:'3',7:'3−',6:'4+',5:'4',4:'4−',
+    3:'5+',2:'5',1:'5−',0:'6',
+  }
+  return m[Math.round(Math.max(0, Math.min(15, np)))] ?? '—'
+}
+
+function getSubjectNP(subjectId: string, halbjahre: AbiHalbjahr[]): number | null {
+  for (const q of ['Q4','Q3','Q2','Q1'] as const) {
+    const hj = halbjahre.find(h => h.label === q)
+    if (!hj) continue
+    const entry = hj.entries.find(e => e.subjectId === subjectId)
+    if (!entry) continue
+    const np = endnoteForEntry(entry)
+    if (np !== null) return np
+  }
+  return null
+}
+
+// ── Mini bar chart (subject grades) ──────────────────────────────────────────
+
+function MiniBarChart({ halbjahre, faecher }: { halbjahre: AbiHalbjahr[]; faecher: string[] }) {
+  const items = faecher
+    .map(id => ({ id, info: SUBJECT_INFO[id], np: getSubjectNP(id, halbjahre) }))
+    .filter(s => s.info && s.np !== null) as Array<{ id: string; info: { name: string; icon: string; color: string }; np: number }>
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-2 gap-1">
+        <span className="text-[22px]">📊</span>
+        <p className="text-text-muted text-[10px] text-center leading-tight">Noch keine<br/>Noten</p>
+      </div>
+    )
+  }
+
+  const shown = items
+  const BAR_H = 52
+
+  return (
+    <div className="overflow-hidden">
+      <p className="text-text-muted text-[9px] font-semibold uppercase tracking-wide mb-1.5">Notenpunkte</p>
+      <div className="flex gap-1.5 items-end" style={{ height: BAR_H + 28 }}>
+        {shown.map(s => {
+          const barH = Math.max(3, Math.round((s.np / 15) * BAR_H))
+          const c = npColor(s.np)
+          return (
+            <div key={s.id} className="flex flex-col items-center flex-1 min-w-0">
+              <div className="flex flex-col items-center justify-end w-full" style={{ height: BAR_H + 10 }}>
+                <span className="text-[8px] font-bold leading-none mb-0.5" style={{ color: c }}>{npLabel(s.np)}</span>
+                <div className="rounded-t-[3px] w-full" style={{ height: barH, background: c, minWidth: 6 }} />
+              </div>
+              <div className="w-full h-px bg-border/50 mb-0.5" />
+              <span className="text-[12px] leading-none">{s.info.icon}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Mini line chart (Notenverlauf Q1–Q4) ─────────────────────────────────────
+
+function MiniLineChart({ halbjahre, faecher }: { halbjahre: AbiHalbjahr[]; faecher: string[] }) {
+  const lines = faecher.flatMap(id => {
+    const info = SUBJECT_INFO[id]
+    if (!info) return []
+    const data = QUARTERS.map(q => {
+      const hj = halbjahre.find(h => h.label === q)
+      const entry = hj?.entries.find(e => e.subjectId === id)
+      return entry ? endnoteForEntry(entry) : null
+    })
+    if (data.every(d => d === null)) return []
+    return [{ id, color: info.color, data }]
+  })
+
+  if (lines.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-4 gap-1">
+        <span className="text-[22px]">📈</span>
+        <p className="text-text-muted text-[10px] text-center leading-tight">Notenverlauf<br/>erscheint hier</p>
+      </div>
+    )
+  }
+
+  const W = 120, H = 72, PL = 14, PR = 6, PT = 6, PB = 16
+  const cW = W - PL - PR, cH = H - PT - PB
+  const xPos = (i: number) => PL + (i / 3) * cW
+  const yPos = (np: number) => PT + cH - (np / 15) * cH
+
+  return (
+    <>
+      <p className="text-text-muted text-[9px] font-semibold uppercase tracking-wide mb-1 shrink-0">Notenverlauf</p>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ flex: 1, display: 'block', minHeight: 0 }} preserveAspectRatio="none">
+        {[5, 10].map(np => (
+          <line key={np} x1={PL} y1={yPos(np)} x2={W - PR} y2={yPos(np)}
+            strokeWidth="0.5" strokeDasharray="2 2" style={{ stroke: 'rgb(var(--color-border))' }} />
+        ))}
+        {QUARTERS.map((q, i) => (
+          <text key={q} x={xPos(i)} y={H - 3} fontSize="7" textAnchor="middle" style={{ fill: 'rgb(var(--color-text-muted))' }}>{q}</text>
+        ))}
+        {[0, 5, 10, 15].map(np => (
+          <text key={np} x={PL - 3} y={yPos(np) + 2.5} fontSize="6" textAnchor="end" style={{ fill: 'rgb(var(--color-text-muted))' }}>{np}</text>
+        ))}
+        {lines.map(l => {
+          let path = ''
+          let penUp = true
+          l.data.forEach((np, i) => {
+            if (np === null) { penUp = true; return }
+            path += (penUp ? 'M' : ' L') + `${xPos(i).toFixed(1)},${yPos(np).toFixed(1)}`
+            penUp = false
+          })
+          if (!path) return null
+          return (
+            <g key={l.id}>
+              <path d={path} fill="none" stroke={l.color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              {l.data.map((np, i) => np !== null ? (
+                <circle key={i} cx={xPos(i)} cy={yPos(np)} r="2" fill={l.color} style={{ stroke: 'rgb(var(--color-surface))' }} strokeWidth="0.8" />
+              ) : null)}
+            </g>
+          )
+        })}
+      </svg>
+    </>
+  )
+}
 
 // ── Icon-Gradienten ──────────────────────────────────────────────────────────
 const G = {
@@ -67,7 +207,7 @@ function Chevron() {
 
 export function KlausurphasenScreen() {
   const navigate = useNavigate()
-  const { generatedFlashCards, profile, appStats, lernplaene } = useUser()
+  const { generatedFlashCards, profile, appStats, lernplaene, userNotes, savedProbeklausuren, lernzettel } = useUser()
 
   const totalCards = generatedFlashCards.length
   const activeStreak = getCurrentStreak(appStats.streak, appStats.lastStudyDate)
@@ -84,29 +224,6 @@ export function KlausurphasenScreen() {
   const subjectName = nextExam?.info?.name ?? 'Nächste Klausur'
   const daysUntilExam = nextExam?.days ?? null
 
-  // Weakest subject from abiHalbjahre
-  const weakestSubject = useMemo(() => {
-    const halbjahre = profile?.abiHalbjahre ?? []
-    const faecher = profile?.faecher ?? []
-    let weakest: { name: string; np: number } | null = null
-    for (const subjectId of faecher) {
-      const info = SUBJECT_INFO[subjectId]
-      if (!info) continue
-      for (const q of ['Q4', 'Q3', 'Q2', 'Q1']) {
-        const hj = halbjahre.find((h) => h.label === q)
-        if (!hj) continue
-        const entry = hj.entries.find((e) => e.subjectId === subjectId)
-        if (!entry) continue
-        const np = endnoteForEntry(entry)
-        if (np !== null && (weakest === null || np < weakest.np)) {
-          weakest = { name: info.name, np }
-        }
-        break
-      }
-    }
-    return weakest
-  }, [profile?.abiHalbjahre, profile?.faecher])
-
   // Active Lernplan: find the active one, compute next 3 upcoming lern/puffer days
   const activePlan = lernplaene.find((p) => p.isActive)
   const upcomingDays = useMemo(() => {
@@ -117,16 +234,10 @@ export function KlausurphasenScreen() {
       .slice(0, 2)
   }, [activePlan])
 
-  // Progress toward zielnote (for the "Vorbereitung" bar)
-  const prepPct = useMemo(() => {
-    const note = profile?.abiGesamtnote
-    const ziel = profile?.zielnote
-    if (!note || !ziel) return null
-    const current = parseFloat(note.replace(',', '.'))
-    const target = parseFloat(ziel.replace(',', '.'))
-    if (isNaN(current) || isNaN(target) || target >= 6.0) return null
-    return Math.round(Math.max(0, Math.min(100, ((6.0 - current) / (6.0 - target)) * 100)))
-  }, [profile?.abiGesamtnote, profile?.zielnote])
+  const totalPhotos = useMemo(
+    () => userNotes.reduce((acc, n) => acc + (n.attachments?.length ?? 0), 0),
+    [userNotes],
+  )
 
   return (
     <div className="flex flex-col min-h-screen bg-background pb-28">
@@ -282,7 +393,7 @@ export function KlausurphasenScreen() {
             <button
               onClick={() => navigate('/klausurmodus/probeklausur')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press
-                lg:flex-1 lg:h-44 lg:flex-col lg:justify-between lg:p-4 lg:gap-0"
+                lg:flex-1 lg:h-44 lg:flex-col lg:items-start lg:justify-between lg:p-4 lg:gap-0"
             >
               <div className="flex items-start justify-between w-auto lg:w-full">
                 <GradientIcon gradient={G.probeklausur} glow="glow-cyan">
@@ -313,7 +424,7 @@ export function KlausurphasenScreen() {
             <button
               onClick={() => navigate('/klausurmodus/lernzettel')}
               className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 flex items-center gap-4 text-left press
-                lg:flex-1 lg:h-44 lg:flex-col lg:justify-between lg:p-4 lg:gap-0"
+                lg:flex-1 lg:h-44 lg:flex-col lg:items-start lg:justify-between lg:p-4 lg:gap-0"
             >
               <div className="flex items-start justify-between w-auto lg:w-full">
                 <GradientIcon gradient={G.lernzettel} glow="glow-teal">
@@ -343,61 +454,42 @@ export function KlausurphasenScreen() {
           <p className="section-label px-1 mb-2.5">Statistik & Insights</p>
           <button
             onClick={() => navigate('/insights')}
-            className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-5 text-left press"
+            className="w-full bg-surface rounded-[20px] shadow-card-adaptive border border-border/60 p-4 text-left press"
           >
-            <div className="flex gap-2.5 mb-5">
-              <div className="flex-1 bg-background rounded-[14px] p-3 text-center">
-                <div className="w-8 h-8 rounded-[10px] mx-auto mb-2 flex items-center justify-center" style={{ background: G.streak }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                  </svg>
-                </div>
-                <p className="text-text-primary font-bold text-[18px] leading-none">{activeStreak}</p>
-                <p className="text-text-muted text-[11px] mt-1">Streak</p>
-              </div>
-              <div className="flex-1 bg-background rounded-[14px] p-3 text-center">
-                <div className="w-8 h-8 rounded-[10px] mx-auto mb-2 flex items-center justify-center" style={{ background: G.probeklausur }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" strokeWidth="3" />
-                  </svg>
-                </div>
-                {weakestSubject ? (
-                  <>
-                    <p className="text-text-primary font-bold text-[11px] leading-tight line-clamp-2">{weakestSubject.name}</p>
-                    <p className="text-text-muted text-[11px] mt-1">Schwäche</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-text-primary font-bold text-[11px] leading-tight">—</p>
-                    <p className="text-text-muted text-[11px] mt-1">Schwäche</p>
-                  </>
-                )}
-              </div>
-              <div className="flex-1 bg-background rounded-[14px] p-3 text-center">
-                <div className="w-8 h-8 rounded-[10px] mx-auto mb-2 flex items-center justify-center" style={{ background: G.lernplan }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                </div>
-                <p className="text-text-primary font-bold text-[18px] leading-none">{profile?.abiGesamtnote ?? '—'}</p>
-                <p className="text-text-muted text-[11px] mt-1">Ø Note</p>
-              </div>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-text-primary font-bold text-[14px]">Dein Überblick</p>
+              <span className="text-text-muted text-[11px]">Alle Details →</span>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-text-secondary text-[12px] font-medium">Vorbereitung</p>
-                <p className="text-text-muted text-[12px]">{prepPct !== null ? `${prepPct} %` : '—'}</p>
+            {/* Two-column layout: bar chart | 6 stats */}
+            <div className="grid grid-cols-2 gap-2.5">
+
+              {/* Left: bar chart */}
+              <div className="bg-background rounded-[12px] p-2">
+                <MiniBarChart halbjahre={profile?.abiHalbjahre ?? []} faecher={profile?.faecher ?? []} />
               </div>
-              <div className="h-2 bg-border/40 rounded-pill overflow-hidden">
-                <div
-                  className="h-full rounded-pill"
-                  style={{ width: `${prepPct ?? 0}%`, background: G.blurting }}
-                />
+
+              {/* Right: 6 stats */}
+              <div className="grid grid-cols-2 gap-1 content-start">
+                {([
+                  { icon: '🔥', value: activeStreak, label: 'Streak' },
+                  { icon: '📝', value: userNotes.length, label: 'Notizen' },
+                  { icon: '📸', value: totalPhotos, label: 'Fotos' },
+                  { icon: '📋', value: savedProbeklausuren.length, label: 'PK' },
+                  { icon: '📄', value: lernzettel.length, label: 'LZ' },
+                  { icon: '🎴', value: generatedFlashCards.length, label: 'Karten' },
+                ] as const).map(s => (
+                  <div key={s.label} className="bg-background rounded-[8px] px-2 py-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] leading-none">{s.icon}</span>
+                      <p className="text-text-primary font-bold text-[13px] leading-none">{s.value}</p>
+                    </div>
+                    <p className="text-text-muted text-[9px] mt-1 leading-none">{s.label}</p>
+                  </div>
+                ))}
               </div>
-              <p className="text-text-muted text-[11px] mt-1.5">Alle Details →</p>
+
             </div>
           </button>
         </div>

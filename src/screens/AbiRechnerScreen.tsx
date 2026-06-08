@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../context/UserContext'
@@ -111,135 +111,35 @@ function getValueColor(v: number): string {
   return 'rgb(5,220,140)'
 }
 
-// ── Wheel picker ──────────────────────────────────────────────────────────────
+// ── Grade picker (4×4 button grid, 0–15) ─────────────────────────────────────
 
-// Wider cells → less distance needed per note → smoother on PC
-const CELL_W = 38
-
-function WheelPicker({
+function GradePicker({
   value,
   onChange,
 }: {
   value: number | null
   onChange: (v: number) => void
 }) {
-  const [local, setLocal] = useState(value ?? 10)
-  // Continuous sub-cell visual offset in px — provides smooth gliding during drag
-  const [visualOffset, setVisualOffset] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const dragStartRef = useRef({ x: 0, startLocal: 0 })
-
-  useEffect(() => {
-    if (value !== null && value !== local) { setLocal(value); setVisualOffset(0) }
-  }, [value]) // eslint-disable-line
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    dragStartRef.current = { x: e.clientX, startLocal: local }
-    setIsDragging(true)
-    setVisualOffset(0)
-    e.currentTarget.setPointerCapture(e.pointerId)
-  }
-
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return
-    const dx = e.clientX - dragStartRef.current.x
-    const rawVal = Math.max(0, Math.min(15, dragStartRef.current.startLocal - dx / CELL_W))
-    const discreteVal = Math.round(rawVal)
-    // Sub-cell fractional offset gives continuous visual glide without waiting for snap
-    const subCell = (rawVal - discreteVal) * CELL_W
-    setVisualOffset(subCell)
-    if (discreteVal !== local) { setLocal(discreteVal); onChange(discreteVal) }
-  }
-
-  const onPointerUp = () => { setIsDragging(false); setVisualOffset(0) }
-
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const v = Math.max(0, Math.min(15, local + Math.sign(e.deltaY)))
-    setLocal(v); onChange(v)
-  }
-
-  const color = getValueColor(local)
-  const isSet = value !== null
-
   return (
-    <div className="w-full select-none">
-      <div
-        className="relative overflow-hidden touch-none"
-        style={{ height: 48, cursor: isDragging ? 'grabbing' : 'grab' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
-      >
-        {Array.from({ length: 16 }, (_, i) => {
-          const xOffset = (i - local) * CELL_W + visualOffset
-          if (Math.abs(xOffset) > 220) return null
-          const dist = Math.abs(i - local - visualOffset / CELL_W)
-          const isCenter = Math.abs(i - local) === 0
-          const c = getValueColor(i)
-          return (
-            <div
-              key={i}
-              className="absolute flex flex-col items-center justify-center"
-              style={{
-                width: CELL_W,
-                top: 0,
-                bottom: 0,
-                left: `calc(50% - ${CELL_W / 2}px)`,
-                transform: `translateX(${xOffset}px)`,
-                // No transition while dragging — prevents the "snap per note" feel
-                transition: isDragging ? 'none' : 'transform 0.1s ease-out',
-                gap: 3,
-              }}
-            >
-              <div
-                style={{
-                  width: 1.5,
-                  height: isCenter ? 13 : dist <= 1.5 ? 8 : 5,
-                  borderRadius: 1,
-                  background: isCenter
-                    ? (isSet ? color : 'rgb(var(--color-text-secondary))')
-                    : 'rgba(var(--color-border), 1)',
-                  opacity: isCenter ? 1 : dist <= 1.5 ? 0.6 : dist <= 2.5 ? 0.35 : 0.15,
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: isCenter ? 20 : dist <= 1.5 ? 12 : 10,
-                  fontWeight: isCenter ? 900 : 700,
-                  color: isSet ? c : (isCenter ? 'rgb(var(--color-text-primary))' : 'rgb(var(--color-text-muted))'),
-                  opacity: isCenter ? 1 : dist <= 1.5 ? 0.5 : dist <= 2.5 ? 0.27 : 0.1,
-                  lineHeight: 1,
-                  transition: isDragging ? 'none' : 'font-size 0.08s ease',
-                }}
-              >
-                {i}
-              </span>
-            </div>
-          )
-        })}
-
-        <div
-          className="absolute inset-y-0 left-0 w-10 pointer-events-none"
-          style={{ background: 'linear-gradient(to right, rgb(var(--color-surface)) 15%, transparent)' }}
-        />
-        <div
-          className="absolute inset-y-0 right-0 w-10 pointer-events-none"
-          style={{ background: 'linear-gradient(to left, rgb(var(--color-surface)) 15%, transparent)' }}
-        />
-
-        <div
-          className="absolute inset-y-1 left-1/2 -translate-x-1/2 pointer-events-none"
-          style={{
-            width: CELL_W,
-            borderLeft: `1.5px solid ${isSet ? color + '65' : 'rgba(var(--color-border),0.55)'}`,
-            borderRight: `1.5px solid ${isSet ? color + '65' : 'rgba(var(--color-border),0.55)'}`,
-          }}
-        />
-      </div>
+    <div className="grid grid-cols-4 gap-1">
+      {Array.from({ length: 16 }, (_, i) => {
+        const isSelected = value === i
+        const color = getValueColor(i)
+        return (
+          <button
+            key={i}
+            onClick={() => onChange(i)}
+            className="rounded-[6px] py-1.5 press-sm transition-all text-center"
+            style={
+              isSelected
+                ? { background: `${color}25`, color, border: `1.5px solid ${color}70`, fontWeight: 800, fontSize: 13 }
+                : { background: 'rgba(var(--color-border),0.18)', color: 'rgb(var(--color-text-muted))', border: '1px solid transparent', fontWeight: 600, fontSize: 12 }
+            }
+          >
+            {i}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -344,7 +244,7 @@ function GradeColumn({
               </button>
             </div>
           )}
-          <WheelPicker
+          <GradePicker
             value={grade}
             onChange={(v) => onGradeChange(idx, v)}
           />
@@ -381,10 +281,12 @@ function SubjectCard({
   entry,
   onChange,
   onLkChange,
+  hideLk = false,
 }: {
   entry: AbiGradeEntry
   onChange: (e: AbiGradeEntry) => void
   onLkChange?: (subjectId: string, isLK: boolean) => void
+  hideLk?: boolean
 }) {
   const subj = SUBJECT_INFO[entry.subjectId]
   const ratio = entry.smRatio ?? 0.5
@@ -454,7 +356,7 @@ function SubjectCard({
             {entry.notBelegt ? '✕ Nicht belegt' : '— Nicht belegt'}
           </button>
           {/* LK 2× toggle */}
-          {!entry.notBelegt && (
+          {!entry.notBelegt && !hideLk && (
             <button
               onClick={() => {
                 const next = !entry.isLK
@@ -523,8 +425,8 @@ function SubjectCard({
       {/* ── SubjectType row (Seminarfach / Ausschließen) ── */}
       <div className="px-4 pb-2.5 pt-2 border-t border-border/20 bg-background/30 flex items-center gap-1.5">
         <span className="text-[9px] text-text-muted uppercase tracking-wider font-bold mr-1">Typ</span>
-        {(['normal', 'seminarfach', 'excluded'] as const).map((t) => {
-          const label = t === 'normal' ? 'Normal' : t === 'seminarfach' ? 'Seminarfach' : 'Ausschließen'
+        {(['normal', 'excluded'] as const).map((t) => {
+          const label = t === 'normal' ? 'Normal' : 'Ausschließen'
           const active = (!entry.subjectType || entry.subjectType === 'normal') ? t === 'normal' : entry.subjectType === t
           return (
             <button
@@ -668,7 +570,8 @@ export function AbiRechnerScreen() {
   const [syncStatus, setSyncStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
 
   const activeHj = halbjahre.find((hj) => hj.id === activeId) ?? halbjahre[0]
-  const activeEntries = activeHj?.entries ?? []
+  const activeEntries = (activeHj?.entries ?? []).filter((e) => e.subjectId !== 'seminarfach')
+  const seminarfachEntry = (activeHj?.entries ?? []).find((e) => e.subjectId === 'seminarfach')
 
   const persist = (updated: AbiHalbjahr[]) => {
     setHalbjahre(updated)
@@ -946,24 +849,42 @@ export function AbiRechnerScreen() {
         </div>
 
         {/* Subject cards */}
-        {activeEntries.length === 0 ? (
+        {activeEntries.length === 0 && !seminarfachEntry ? (
           <div className="text-center py-8">
             <p className="text-text-muted text-[13px]">Keine Fächer ausgewählt</p>
             <p className="text-text-muted text-[11px] mt-1">Füge Fächer im Profil hinzu</p>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
-              {activeHj?.label ?? ''} — Noten
-            </p>
-            {activeEntries.map((entry) => (
-              <SubjectCard
-                key={`${activeId}-${entry.subjectId}`}
-                entry={entry}
-                onChange={updateEntry}
-                onLkChange={isOberstufe ? updateLkAcrossHalbjahre : undefined}
-              />
-            ))}
+            {activeEntries.length > 0 && (
+              <>
+                <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
+                  {activeHj?.label ?? ''} — Noten
+                </p>
+                {activeEntries.map((entry) => (
+                  <SubjectCard
+                    key={`${activeId}-${entry.subjectId}`}
+                    entry={entry}
+                    onChange={updateEntry}
+                    onLkChange={isOberstufe ? updateLkAcrossHalbjahre : undefined}
+                  />
+                ))}
+              </>
+            )}
+
+            {seminarfachEntry && (
+              <>
+                <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider pt-1">
+                  Seminarfach
+                </p>
+                <SubjectCard
+                  key={`${activeId}-seminarfach`}
+                  entry={seminarfachEntry}
+                  onChange={updateEntry}
+                  hideLk
+                />
+              </>
+            )}
           </div>
         )}
 
