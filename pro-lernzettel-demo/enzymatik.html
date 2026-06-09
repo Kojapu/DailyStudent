@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enzymatik — Pro Lernzettel</title>
+<style>
+  :root {
+    --bio-green: #30D158;
+    --bio-dark: #1a3a2a;
+    --bio-mid: #2d6a4f;
+    --bg: #0f1c14;
+    --surface: #172418;
+    --surface2: #1e3025;
+    --text: #f0faf4;
+    --muted: #7cb894;
+    --border: rgba(48,209,88,0.15);
+    --accent: #34C759;
+    --yellow: #FFD60A;
+    --red: #FF453A;
+    --blue: #64D2FF;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 32px 16px 80px;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    display: flex; align-items: flex-start; gap: 16px;
+    margin-bottom: 32px;
+  }
+  .subject-badge {
+    width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
+    background: linear-gradient(135deg, #30D158, #1a7a3a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; box-shadow: 0 4px 16px rgba(48,209,88,0.3);
+  }
+  .header-text h1 { font-size: 26px; font-weight: 700; line-height: 1.2; }
+  .header-text .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .pro-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: linear-gradient(135deg, #7C3AED, #5B21B6);
+    color: white; font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px; margin-top: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 10px; margin-top: 28px;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px;
+    margin-bottom: 12px;
+  }
+  .card h3 {
+    font-size: 15px; font-weight: 700; margin-bottom: 10px;
+    color: var(--bio-green);
+  }
+  .card p, .card li { font-size: 14px; color: #d4edda; line-height: 1.65; }
+  .card ul { padding-left: 18px; }
+  .card li { margin-bottom: 4px; }
+
+  /* Definition highlight */
+  .def-box {
+    background: rgba(48,209,88,0.08);
+    border-left: 3px solid var(--bio-green);
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px; margin: 10px 0;
+    font-size: 14px;
+  }
+  .def-box strong { color: var(--bio-green); }
+
+  /* Eselsbrücke */
+  .esel-card {
+    background: rgba(255,214,10,0.08);
+    border: 1px solid rgba(255,214,10,0.25);
+    border-radius: 14px; padding: 16px; margin-bottom: 10px;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .esel-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .esel-card .esel-title { font-size: 13px; font-weight: 600; color: var(--yellow); margin-bottom: 4px; }
+  .esel-card .esel-text { font-size: 13px; color: #e8d87a; line-height: 1.5; }
+
+  /* SVG diagrams */
+  .diagram-wrap {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .diagram-wrap .diagram-title {
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  svg { display: block; margin: 0 auto; }
+
+  /* Grid layout for 2 diagrams */
+  .diagram-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;
+  }
+  @media (max-width: 580px) { .diagram-grid { grid-template-columns: 1fr; } }
+
+  /* Flip cards */
+  .flip-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 560px) { .flip-grid { grid-template-columns: 1fr; } }
+
+  .flip-card {
+    perspective: 1000px; height: 130px; cursor: pointer;
+  }
+  .flip-inner {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.4s cubic-bezier(0.4,0,0.2,1);
+  }
+  .flip-card.flipped .flip-inner { transform: rotateY(180deg); }
+
+  .flip-front, .flip-back {
+    position: absolute; inset: 0;
+    backface-visibility: hidden;
+    border-radius: 14px; padding: 14px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .flip-front {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .flip-back {
+    background: rgba(48,209,88,0.1);
+    border: 1px solid rgba(48,209,88,0.3);
+    transform: rotateY(180deg);
+  }
+  .flip-front .q-label {
+    font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .flip-front .q-text {
+    font-size: 13px; font-weight: 600; color: var(--text); flex: 1;
+    display: flex; align-items: center; padding: 6px 0;
+    line-height: 1.4;
+  }
+  .flip-front .q-hint {
+    font-size: 11px; color: var(--muted);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .flip-back .a-label {
+    font-size: 10px; font-weight: 600; color: var(--bio-green);
+    text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .flip-back .a-text {
+    font-size: 12.5px; color: #c8f0d4; flex: 1;
+    display: flex; align-items: center; padding: 6px 0;
+    line-height: 1.45;
+  }
+  .flip-back .a-tap {
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* Two-col layout */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* Inhibition comparison */
+  .inhibition-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;
+  }
+  .inh-box {
+    border-radius: 12px; padding: 14px;
+  }
+  .inh-box.kompetitiv { background: rgba(100,210,255,0.08); border: 1px solid rgba(100,210,255,0.2); }
+  .inh-box.allosterisch { background: rgba(255,69,58,0.08); border: 1px solid rgba(255,69,58,0.2); }
+  .inh-box .inh-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+  .inh-box.kompetitiv .inh-title { color: var(--blue); }
+  .inh-box.allosterisch .inh-title { color: var(--red); }
+  .inh-box p { font-size: 12.5px; color: #cce; line-height: 1.5; }
+
+  /* Bottom note */
+  .bottom-note {
+    text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px;
+    padding-top: 20px; border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="subject-badge">🧬</div>
+  <div class="header-text">
+    <h1>Enzymatik</h1>
+    <div class="meta">Biologie · Oberstufe · Klasse 12/13</div>
+    <div class="pro-chip">✦ PRO Lernzettel</div>
+  </div>
+</div>
+
+<!-- Grundlagen -->
+<div class="section-label">Grundlagen</div>
+
+<div class="card">
+  <h3>Was sind Enzyme?</h3>
+  <div class="def-box">
+    Enzyme sind <strong>biologische Katalysatoren</strong> aus Protein (Globuläre Proteine). Sie senken die <strong>Aktivierungsenergie</strong> einer Reaktion, ohne dabei selbst verbraucht zu werden.
+  </div>
+  <ul>
+    <li>Wirkung: <strong>substrat- und wirkungsspezifisch</strong></li>
+    <li>Aufbau: Apoenzym (Proteinanteil) + ggf. Cofaktor = <strong>Holoenzym</strong></li>
+    <li>Reaktionsbeschleunigung: bis zu 10<sup>17</sup>-fach gegenüber unkatalysierter Reaktion</li>
+    <li>Enzyme werden durch die Reaktion <strong>nicht verändert</strong> → direkt wiederverwendbar</li>
+  </ul>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h3>Apoenzym</h3>
+    <p>Der reine <strong>Proteinanteil</strong> des Enzyms. Allein meist inaktiv. Trägt das aktive Zentrum.</p>
+  </div>
+  <div class="card">
+    <h3>Cofaktor / Coenzym</h3>
+    <p><strong>Nicht-Protein-Anteil</strong>. Cofaktoren = Metallionen (z. B. Zn²⁺). Coenzyme = org. Moleküle (z. B. NAD⁺, FAD).</p>
+  </div>
+</div>
+
+<!-- Wirkmodelle SVG -->
+<div class="section-label">Wirkungsmodelle</div>
+
+<div class="diagram-wrap">
+  <div class="diagram-title">Schlüssel-Schloss vs. Induced-Fit Modell</div>
+  <svg width="100%" height="220" viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+    <!-- LEFT: Schlüssel-Schloss -->
+    <text x="160" y="22" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="600" fill="#7cb894">Schlüssel-Schloss-Modell</text>
+    <text x="160" y="38" text-anchor="middle" font-family="system-ui" font-size="11" fill="#5a8a6a">(Fischer, 1894)</text>
+
+    <!-- Enzyme rigid -->
+    <rect x="60" y="55" width="100" height="80" rx="12" fill="#1e3a28" stroke="#30D158" stroke-width="1.5"/>
+    <text x="110" y="90" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894">Enzym</text>
+    <!-- Active site notch -->
+    <rect x="85" y="110" width="50" height="25" rx="6" fill="#0f1c14" stroke="#30D158" stroke-width="1"/>
+    <text x="110" y="128" text-anchor="middle" font-family="system-ui" font-size="9" fill="#5a8a6a">Aktives Zentrum</text>
+
+    <!-- Substrate rigid -->
+    <rect x="195" y="108" width="50" height="27" rx="6" fill="#2d6a4f" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="220" y="126" text-anchor="middle" font-family="system-ui" font-size="10" fill="#64D2FF">Substrat</text>
+
+    <!-- Arrow -->
+    <line x1="250" y1="120" x2="280" y2="120" stroke="#5a8a6a" stroke-width="1.5" marker-end="url(#arrow1)"/>
+    <defs>
+      <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#5a8a6a"/>
+      </marker>
+    </defs>
+
+    <!-- Complex rigid -->
+    <rect x="285" y="55" width="100" height="80" rx="12" fill="#1e3a28" stroke="#30D158" stroke-width="1.5"/>
+    <rect x="310" y="110" width="50" height="25" rx="6" fill="#2d6a4f" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="335" y="128" text-anchor="middle" font-family="system-ui" font-size="9" fill="#64D2FF">Substrat</text>
+    <text x="335" y="90" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894">Komplex</text>
+
+    <text x="160" y="200" text-anchor="middle" font-family="system-ui" font-size="11" fill="#5a8a6a" font-style="italic">Starre Passform — wie Schlüssel im Schloss</text>
+
+    <!-- Divider -->
+    <line x1="400" y1="30" x2="400" y2="210" stroke="#2d4a3a" stroke-width="1" stroke-dasharray="4,3"/>
+
+    <!-- RIGHT: Induced Fit -->
+    <text x="550" y="22" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="600" fill="#7cb894">Induced-Fit-Modell</text>
+    <text x="550" y="38" text-anchor="middle" font-family="system-ui" font-size="11" fill="#5a8a6a">(Koshland, 1958)</text>
+
+    <!-- Enzyme flexible before -->
+    <ellipse cx="460" cy="100" rx="45" ry="38" fill="#1e3a28" stroke="#30D158" stroke-width="1.5"/>
+    <path d="M 432 110 Q 445 90 460 115 Q 475 90 488 110" fill="none" stroke="#30D158" stroke-width="1.5"/>
+    <text x="460" y="85" text-anchor="middle" font-family="system-ui" font-size="10" fill="#7cb894">Enzym</text>
+    <text x="460" y="160" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">Offen</text>
+
+    <!-- Substrate -->
+    <ellipse cx="530" cy="115" rx="20" ry="14" fill="#2d6a4f" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="530" y="119" text-anchor="middle" font-family="system-ui" font-size="9" fill="#64D2FF">S</text>
+
+    <!-- Arrow induced -->
+    <line x1="555" y1="115" x2="575" y2="115" stroke="#5a8a6a" stroke-width="1.5" marker-end="url(#arrow2)"/>
+    <defs>
+      <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#5a8a6a"/>
+      </marker>
+    </defs>
+
+    <!-- Enzyme fitted after -->
+    <ellipse cx="625" cy="100" rx="40" ry="38" fill="#1e3a28" stroke="#30D158" stroke-width="1.5"/>
+    <ellipse cx="625" cy="115" rx="18" ry="12" fill="#2d6a4f" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="625" y="119" text-anchor="middle" font-family="system-ui" font-size="9" fill="#64D2FF">S</text>
+    <text x="625" y="83" text-anchor="middle" font-family="system-ui" font-size="10" fill="#7cb894">Komplex</text>
+    <text x="625" y="160" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">Angepasst</text>
+
+    <text x="550" y="200" text-anchor="middle" font-family="system-ui" font-size="11" fill="#5a8a6a" font-style="italic">Enzym verändert Form beim Binden</text>
+  </svg>
+</div>
+
+<div class="card">
+  <h3>Induced-Fit — warum heute Standard?</h3>
+  <ul>
+    <li>Erklärt, warum strukturähnliche Substrate <strong>verschieden gut passen</strong></li>
+    <li>Erklärt allosterische Regulation (Konformationsänderung durch Effektoren)</li>
+    <li>Das Schlüssel-Schloss-Modell ist eine <strong>Vereinfachung</strong> — gut zum Merken, aber unvollständig</li>
+  </ul>
+</div>
+
+<!-- Eselsbrücken Grundlagen -->
+<div class="section-label">Eselsbrücken</div>
+
+<div class="esel-card">
+  <div class="esel-icon">🔑</div>
+  <div>
+    <div class="esel-title">Schlüssel-Schloss vs. Induced-Fit</div>
+    <div class="esel-text">
+      <strong>"Ein Handschuh passt sich der Hand an — eine Schachtel tut es nicht."</strong><br>
+      → Schachtel = Schlüssel-Schloss (starr), Handschuh = Induced-Fit (flexibel)
+    </div>
+  </div>
+</div>
+
+<div class="esel-card">
+  <div class="esel-icon">🧩</div>
+  <div>
+    <div class="esel-title">Enzym-Substrat-Komplex</div>
+    <div class="esel-text">
+      <strong>„ESEK = Enzym + Substrat → Enzym-Substrat-Enzym-Komplex"</strong><br>
+      → Reihenfolge merken: E bindet S → ES-Komplex entsteht → Produkt P wird freigesetzt → E wieder frei
+    </div>
+  </div>
+</div>
+
+<div class="esel-card">
+  <div class="esel-icon">⚡</div>
+  <div>
+    <div class="esel-title">Aktivierungsenergie</div>
+    <div class="esel-text">
+      <strong>„Enzyme sind der Türöffner — sie senken die Schwelle, aber die Tür bleibt dieselbe."</strong><br>
+      → Die Reaktion wird nicht verändert, nur die Energie die nötig ist um sie zu starten, sinkt.
+    </div>
+  </div>
+</div>
+
+<!-- Einflussfaktoren SVG -->
+<div class="section-label">Einflussfaktoren auf die Enzymaktivität</div>
+
+<div class="diagram-grid">
+  <div class="diagram-wrap">
+    <div class="diagram-title">Temperatur</div>
+    <svg width="100%" height="180" viewBox="0 0 280 180" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="tempGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#30D158;stop-opacity:0.3"/>
+          <stop offset="55%" style="stop-color:#30D158;stop-opacity:1"/>
+          <stop offset="100%" style="stop-color:#FF453A;stop-opacity:0.8"/>
+        </linearGradient>
+      </defs>
+      <!-- Axes -->
+      <line x1="35" y1="140" x2="265" y2="140" stroke="#3a5a45" stroke-width="1.5"/>
+      <line x1="35" y1="20" x2="35" y2="140" stroke="#3a5a45" stroke-width="1.5"/>
+      <!-- Axis labels -->
+      <text x="150" y="160" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894">Temperatur (°C)</text>
+      <text x="12" y="90" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894" transform="rotate(-90,12,90)">Aktivität</text>
+      <!-- Temp markers -->
+      <text x="95" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">20</text>
+      <text x="145" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#30D158" font-weight="600">37</text>
+      <text x="195" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">55</text>
+      <text x="240" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">70</text>
+      <!-- Bell curve -->
+      <path d="M 40,138 C 60,138 80,125 100,105 C 120,80 130,42 145,32 C 155,25 160,25 168,32 C 180,45 195,95 215,125 C 235,140 260,140 265,140" fill="none" stroke="url(#tempGrad)" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Optimum line -->
+      <line x1="145" y1="32" x2="145" y2="140" stroke="#30D158" stroke-width="1" stroke-dasharray="3,2" opacity="0.6"/>
+      <text x="155" y="45" font-family="system-ui" font-size="10" fill="#30D158" font-weight="600">Optimum</text>
+      <text x="155" y="57" font-family="system-ui" font-size="10" fill="#30D158">~37°C</text>
+      <!-- Denaturierung label -->
+      <text x="220" y="110" font-family="system-ui" font-size="10" fill="#FF453A">Denaturierung</text>
+    </svg>
+  </div>
+
+  <div class="diagram-wrap">
+    <div class="diagram-title">pH-Wert</div>
+    <svg width="100%" height="180" viewBox="0 0 280 180" xmlns="http://www.w3.org/2000/svg">
+      <!-- Axes -->
+      <line x1="35" y1="140" x2="265" y2="140" stroke="#3a5a45" stroke-width="1.5"/>
+      <line x1="35" y1="20" x2="35" y2="140" stroke="#3a5a45" stroke-width="1.5"/>
+      <text x="150" y="160" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894">pH-Wert</text>
+      <text x="12" y="90" text-anchor="middle" font-family="system-ui" font-size="11" fill="#7cb894" transform="rotate(-90,12,90)">Aktivität</text>
+      <!-- pH markers -->
+      <text x="58" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">1</text>
+      <text x="90" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">3</text>
+      <text x="122" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">5</text>
+      <text x="154" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">7</text>
+      <text x="186" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">9</text>
+      <text x="218" y="153" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">11</text>
+      <!-- Pepsin curve (pH 2) -->
+      <path d="M 40,138 C 55,138 65,105 78,45 C 85,25 92,25 98,40 C 108,65 115,120 130,138 C 200,138 265,138 265,138" fill="none" stroke="#FFD60A" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+      <text x="78" y="38" font-family="system-ui" font-size="9" fill="#FFD60A" text-anchor="middle">Pepsin</text>
+      <text x="78" y="48" font-family="system-ui" font-size="9" fill="#FFD60A" text-anchor="middle">pH 2</text>
+      <!-- Trypsin curve (pH 8) -->
+      <path d="M 40,138 C 100,138 140,138 165,95 C 175,70 182,40 190,32 C 196,26 200,26 205,32 C 215,50 220,95 240,128 C 250,135 260,138 265,138" fill="none" stroke="#30D158" stroke-width="2" stroke-linecap="round"/>
+      <text x="197" y="24" font-family="system-ui" font-size="9" fill="#30D158" text-anchor="middle">Trypsin</text>
+      <text x="197" y="34" font-family="system-ui" font-size="9" fill="#30D158" text-anchor="middle">pH 8</text>
+    </svg>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Einflussfaktoren — Merktabelle</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:4px;">
+    <thead>
+      <tr style="border-bottom:1px solid rgba(48,209,88,0.2);">
+        <th style="text-align:left;padding:6px 8px;color:#7cb894;font-weight:600;">Faktor</th>
+        <th style="text-align:left;padding:6px 8px;color:#7cb894;font-weight:600;">Optimum (Beispiel)</th>
+        <th style="text-align:left;padding:6px 8px;color:#7cb894;font-weight:600;">Zu hoch → Effekt</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid rgba(48,209,88,0.08);">
+        <td style="padding:7px 8px;color:#d4edda;">Temperatur</td>
+        <td style="padding:7px 8px;color:#d4edda;">37°C (Körperenzy.)</td>
+        <td style="padding:7px 8px;color:#FF453A;">Denaturierung — Proteinstruktur bricht</td>
+      </tr>
+      <tr style="border-bottom:1px solid rgba(48,209,88,0.08);">
+        <td style="padding:7px 8px;color:#d4edda;">pH-Wert</td>
+        <td style="padding:7px 8px;color:#d4edda;">Pepsin pH 2 / Trypsin pH 8</td>
+        <td style="padding:7px 8px;color:#FF453A;">Denaturierung — Ionenbindungen brechen</td>
+      </tr>
+      <tr>
+        <td style="padding:7px 8px;color:#d4edda;">Substratkonzentration</td>
+        <td style="padding:7px 8px;color:#d4edda;">Vmax bei Sättigung</td>
+        <td style="padding:7px 8px;color:#64D2FF;">Plateau — alle aktiven Zentren besetzt</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="esel-card">
+  <div class="esel-icon">🌡️</div>
+  <div>
+    <div class="esel-title">Temperatur-Denaturierung merken</div>
+    <div class="esel-text">
+      <strong>„Wie ein gekochtes Ei — einmal denaturiert, nie mehr flüssig."</strong><br>
+      → Denaturierung ist (meist) irreversibel. Das Enzym verliert seine 3D-Struktur und damit seine Funktion.
+    </div>
+  </div>
+</div>
+
+<!-- Enzymatik Hemmung SVG -->
+<div class="section-label">Enzymhemmung</div>
+
+<div class="diagram-wrap">
+  <div class="diagram-title">Kompetitive vs. Allosterische (nicht-kompetitive) Hemmung</div>
+  <svg width="100%" height="200" viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+    <!-- LEFT: Kompetitiv -->
+    <text x="175" y="20" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="600" fill="#64D2FF">Kompetitive Hemmung</text>
+
+    <!-- Enzyme -->
+    <rect x="60" y="45" width="120" height="90" rx="14" fill="#1e3a28" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="120" y="78" text-anchor="middle" font-family="system-ui" font-size="11" fill="#64D2FF">Enzym</text>
+    <!-- Active site -->
+    <rect x="85" y="108" width="70" height="27" rx="8" fill="#0f1c14" stroke="#64D2FF" stroke-width="1.5"/>
+    <text x="120" y="126" text-anchor="middle" font-family="system-ui" font-size="9" fill="#5a8a6a">Aktives Zentrum</text>
+
+    <!-- Inhibitor sits in active site -->
+    <rect x="89" y="110" width="62" height="23" rx="6" fill="#1a3a5a" stroke="#64D2FF" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="120" y="125" text-anchor="middle" font-family="system-ui" font-size="9" fill="#64D2FF" font-weight="600">Inhibitor</text>
+
+    <!-- Blocked substrate -->
+    <rect x="210" y="112" width="50" height="23" rx="6" fill="#2d2d2d" stroke="#666" stroke-width="1"/>
+    <text x="235" y="127" text-anchor="middle" font-family="system-ui" font-size="9" fill="#888">Substrat ✕</text>
+
+    <text x="175" y="175" text-anchor="middle" font-family="system-ui" font-size="11" fill="#64D2FF" font-style="italic">Konkurrenz ums aktive Zentrum</text>
+    <text x="175" y="190" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">Aufhebbar durch ↑ Substratkonzentration</text>
+
+    <!-- Divider -->
+    <line x1="360" y1="10" x2="360" y2="195" stroke="#2d4a3a" stroke-width="1" stroke-dasharray="4,3"/>
+
+    <!-- RIGHT: Allosterisch -->
+    <text x="530" y="20" text-anchor="middle" font-family="system-ui" font-size="13" font-weight="600" fill="#FF6B6B">Allosterische Hemmung</text>
+
+    <!-- Enzyme with allosteric site -->
+    <ellipse cx="500" cy="95" rx="55" ry="45" fill="#1e3a28" stroke="#FF453A" stroke-width="1.5"/>
+    <!-- Active site indent -->
+    <path d="M 475,118 Q 500,105 525,118" fill="none" stroke="#30D158" stroke-width="2"/>
+    <text x="500" y="98" text-anchor="middle" font-family="system-ui" font-size="10" fill="#7cb894">Enzym</text>
+
+    <!-- Allosteric site -->
+    <circle cx="500" cy="55" r="14" fill="#3a1a1a" stroke="#FF453A" stroke-width="1.5" stroke-dasharray="3,2"/>
+    <text x="500" y="59" text-anchor="middle" font-family="system-ui" font-size="8" fill="#FF453A">Inh.</text>
+
+    <!-- Arrow showing conformational change -->
+    <path d="M 470,80 Q 460,68 465,58" fill="none" stroke="#FF453A" stroke-width="1.5" marker-end="url(#arrowRed)" stroke-dasharray="3,2"/>
+    <defs>
+      <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF453A"/>
+      </marker>
+    </defs>
+
+    <!-- Distorted active site -->
+    <text x="500" y="135" text-anchor="middle" font-family="system-ui" font-size="9" fill="#FF453A">Aktives Zentrum verformt</text>
+
+    <!-- Substrate can't fit -->
+    <rect x="565" y="107" width="46" height="22" rx="6" fill="#2d2d2d" stroke="#666" stroke-width="1"/>
+    <text x="588" y="121" text-anchor="middle" font-family="system-ui" font-size="9" fill="#888">Substrat ✕</text>
+
+    <text x="530" y="175" text-anchor="middle" font-family="system-ui" font-size="11" fill="#FF6B6B" font-style="italic">Andocken am allosterischen Zentrum</text>
+    <text x="530" y="190" text-anchor="middle" font-family="system-ui" font-size="10" fill="#5a8a6a">Nicht aufhebbar durch ↑ Substratkonz.</text>
+  </svg>
+</div>
+
+<div class="inhibition-row">
+  <div class="inh-box kompetitiv">
+    <div class="inh-title">Kompetitiv</div>
+    <p>Inhibitor ähnelt dem Substrat strukturell. Bindet ans <strong>aktive Zentrum</strong>. Verdrängt das Substrat. Aufhebbar durch hohe Substratkonzentration. Vmax bleibt gleich, K<sub>m</sub> steigt.</p>
+  </div>
+  <div class="inh-box allosterisch">
+    <div class="inh-title">Allosterisch (nicht-kompetitiv)</div>
+    <p>Inhibitor bindet an <strong>anderer Stelle</strong> (allosterisches Zentrum). Verändert Enzymform → aktives Zentrum funktioniert nicht mehr. <strong>Nicht</strong> durch mehr Substrat aufhebbar. Vmax sinkt, K<sub>m</sub> gleich.</p>
+  </div>
+</div>
+
+<div class="esel-card">
+  <div class="esel-icon">🥊</div>
+  <div>
+    <div class="esel-title">Kompetitiv vs. Allosterisch — der Unterschied</div>
+    <div class="esel-text">
+      <strong>Kompetitiv = Kampf ums gleiche Ziel</strong> (beide wollen ins aktive Zentrum).<br>
+      <strong>Allosterisch = Sabotage von hinten</strong> (Inhibitor setzt sich woanders hin und verändert die Form).<br>
+      → Mehr Substrat schlägt den "Kämpfer", aber nicht den "Saboteur".
+    </div>
+  </div>
+</div>
+
+<!-- Feedback-Hemmung -->
+<div class="card">
+  <h3>Feedback-Hemmung (End-Produkt-Hemmung)</h3>
+  <div class="def-box">
+    Das <strong>Endprodukt</strong> einer Stoffwechselkette hemmt allosterisch das erste Enzym der Kette → <strong>Selbstregulation</strong> des Stoffwechsels.
+  </div>
+  <p style="margin-top:8px;font-size:13px;">Beispiel: Isoleucin-Biosynthese — sobald genug Isoleucin vorhanden → hemmt es Threonin-Deaminase (erstes Enzym).</p>
+</div>
+
+<!-- Interaktive Prüfungsfragen -->
+<div class="section-label">Prüfungsfragen — Aufdecken zum Antworten</div>
+
+<div class="flip-grid">
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Was versteht man unter dem Induced-Fit-Modell? Worin unterscheidet es sich vom Schlüssel-Schloss-Modell?</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Beim Induced-Fit passt sich das Enzym seiner Form nach dem Substrat an (Konformationsänderung). Beim Schlüssel-Schloss-Modell ist das aktive Zentrum starr und passt nur zu einem exakt passenden Substrat.</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Warum steigt die Reaktionsgeschwindigkeit bei höherer Temperatur zunächst an, sinkt aber dann stark ab?</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Mehr Wärme = mehr kinetische Energie = mehr Enzym-Substrat-Kollisionen (Anstieg). Über Optimum: Wärmebewegung bricht Wasserstoffbrücken → Denaturierung → Strukturverlust des aktiven Zentrums.</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Nenne den entscheidenden Unterschied zwischen kompetitiver und nicht-kompetitiver Hemmung anhand von Vmax und Km.</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Kompetitiv: Vmax bleibt gleich, Km steigt (weniger Affinität). Nicht-kompetitiv: Vmax sinkt, Km bleibt gleich. Kompetitive Hemmung ist durch ↑ Substratkonzentration aufhebbar, allosterische nicht.</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Was ist ein Holoenzym und wozu dienen Coenzyme? Nenne ein Beispiel.</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Holoenzym = Apoenzym + Cofaktor/Coenzym. Coenzyme übertragen Gruppen (z.B. H-Atome). Beispiel: NAD⁺ nimmt 2H auf → NADH bei der Zellatmung. Viele Vitamine sind Coenzyme (z.B. Vit. B2 → FAD).</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Erkläre das Prinzip der Feedback-Hemmung. Was ist der biologische Vorteil?</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Das Endprodukt einer Reaktionskette hemmt allosterisch das erste Enzym. Vorteil: Selbstregulation — wird genug Produkt produziert, stoppt die Produktion automatisch. Verhindert Überproduktion und spart Energie.</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="flip-card" onclick="this.classList.toggle('flipped')">
+    <div class="flip-inner">
+      <div class="flip-front">
+        <span class="q-label">Frage</span>
+        <span class="q-text">Was passiert bei der Denaturierung eines Enzyms auf molekularer Ebene? Ist sie reversibel?</span>
+        <span class="q-hint">👆 Tippen zum Aufdecken</span>
+      </div>
+      <div class="flip-back">
+        <span class="a-label">Antwort</span>
+        <span class="a-text">Tertiärstruktur (3D-Faltung) wird zerstört — Wasserstoffbrücken, ionische Bindungen brechen. Primärstruktur (AS-Sequenz) bleibt intakt. Meist irreversibel (z.B. gekochtes Ei). Ausnahme: manche Proteine renaturieren bei pH/Temp.-Normalisierung.</span>
+        <span class="a-tap">Tippen zum Zurückdrehen</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Zusammenfassung -->
+<div class="section-label">Klausur-Schnellübersicht</div>
+<div class="card">
+  <h3>Das Wichtigste auf einen Blick</h3>
+  <ul style="margin-top:4px;">
+    <li>Enzyme = Proteinkatalysatoren → senken Aktivierungsenergie, werden nicht verbraucht</li>
+    <li>Induced-Fit: Enzym passt sich dem Substrat an (heute Standardmodell)</li>
+    <li>Temperatur + pH: Jedes Enzym hat ein Optimum → zu viel = Denaturierung</li>
+    <li>Kompetitiv: Inhibitor ins aktive Zentrum → aufhebbar durch mehr Substrat</li>
+    <li>Allosterisch: Inhibitor woanders → Enzym verformt sich → nicht aufhebbar</li>
+    <li>Feedback-Hemmung: Endprodukt hemmt erstes Enzym der Kette → Selbstregulation</li>
+    <li>Coenzyme (NAD⁺, FAD) = Gruppenüberträger → viele Vitamine sind Coenzyme</li>
+  </ul>
+</div>
+
+<div class="bottom-note">
+  ✦ Pro Lernzettel · DailyStudent · Generiert mit Claude Haiku
+</div>
+
+<script>
+  // Keyboard shortcut: press space to flip focused card
+  document.querySelectorAll('.flip-card').forEach(card => {
+    card.setAttribute('tabindex', '0');
+    card.addEventListener('keydown', e => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        card.classList.toggle('flipped');
+      }
+    });
+  });
+</script>
+</body>
+</html>
